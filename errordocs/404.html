@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ошибка 404</title>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    html, body {
+      height: 100%;
+      font-family: 'Manrope', sans-serif;
+      background: #ffffff;
+      color: #111827;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 700px;
+      text-align: center;
+    }
+    .error-code {
+      font-size: 120px;
+      font-weight: 700;
+      color: #e5e7eb;
+    }
+    .title {
+      font-size: 28px;
+      font-weight: 700;
+      margin-top: -20px;
+      margin-bottom: 20px;
+    }
+    .description {
+      font-size: 16px;
+      color: #6b7280;
+      margin-bottom: 30px;
+    }
+    .button {
+      display: inline-block;
+      padding: 14px 28px;
+      background-color: #111827;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 8px;
+      transition: background 0.3s ease;
+    }
+    .button:hover {
+      background-color: #374151;
+    }
+    .illustration {
+      margin-top: 40px;
+    }
+    .illustration svg {
+      max-width: 100%;
+      height: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="error-code">404</div>
+    <div class="title">Страница не найдена</div>
+    <p class="description">
+      Упс! Похоже, вы перешли по несуществующему адресу.<br>
+      Возможно, страница была удалена или вы ошиблись в URL.
+    </p>
+    <a href="/" class="button">На главную</a>
+
+    <div class="illustration">
+      <!-- Минималистичная SVG-иллюстрация -->
+      <svg viewBox="0 0 500 150" xmlns="http://www.w3.org/2000/svg" fill="none">
+        <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="40" fill="#d1d5db">
+          👀 Ничего не видно тут
+        </text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
