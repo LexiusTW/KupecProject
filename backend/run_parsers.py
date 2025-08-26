@@ -13,6 +13,7 @@ from app.db.session import create_tables, AsyncSessionLocal
 from app.parsers.excel_processor import process_excel_file
 from app.parsers.mc_ru_parser import process_mc_page_with_page
 from app.parsers.metallotorg_parser import parse_metallotorg_pdf
+from app.parsers.uralskaya_parser import process_uralskaya_metallobaza
 from app.models.metal import Metal, MetalGreen
 from app.models.warehouse import Warehouse, WarehouseGreen
 from app.parsers.parser import download_pricelist, select_moscow_if_needed
@@ -177,6 +178,7 @@ MC_LINKS_BY_CITY: dict[str, list[str]] = {
 }
 
 METALLOTORG_SUPPLIER = "Металлоторг"
+URALSKAYA_SUPPLIER = "Уральская металлобаза"
 
 METALLOTORG_LINKS_BY_CITY: dict[str, str] = {
     "Белгород": "https://metallotorg.su/images/price/pdf/price-metall-belgorod-kreida.pdf",
@@ -558,6 +560,7 @@ async def main():
                 await clear_green_tables_for_supplier(session, EVRAZ_SUPPLIER)
                 await clear_green_tables_for_supplier(session, MC_SUPPLIER)
                 await clear_green_tables_for_supplier(session, METALLOTORG_SUPPLIER)
+                await clear_green_tables_for_supplier(session, URALSKAYA_SUPPLIER)
                 print("Green-таблицы очищены.")
                 print("="*50)
 
@@ -591,6 +594,12 @@ async def main():
                         await process_metallotorg_city(session, city_name, url)
                     except Exception as e:
                         print(f"!!! ОШИБКА при обработке города Металлоторг '{city_name}': {e}")
+
+                # Уральская металлобаза
+                try:
+                    await process_uralskaya_metallobaza(session, "Екатеринбург")
+                except Exception as e:
+                    print(f"!!! ОШИБКА при обработке Уральской металлобазы: {e}")
 
                 # 3. Финализируем все данные из green в blue таблицы
                 print("\nШАГ 3: Перенос всех данных из green в blue таблицы...")
