@@ -1,43 +1,61 @@
-export interface SearchFormData {
-  supplier?: string;
-  category?: string;
-  grade?: string; // Corresponds to 'stamp' in API
-  standard?: string; // Corresponds to 'gost' in API
-  city?: string;
-  thickness?: string;
-  length?: string;
-  width?: string;
-  diameter?: string;
+
+// Роль пользователя при регистрации
+export type Role = 'buyer' | 'seller';
+
+// Данные формы авторизации (логин)
+export interface AuthFormData {
+  login: string;
+  password: string;
 }
 
-export type Product = {
-  name: string;
+/**
+ * Данные формы регистрации (общий тип для покупателя и продавца).
+ * Для покупателя нужны только login и password.
+ * Для продавца добавляются поля ниже — они опциональны,
+ * чтобы тип подходил для обеих вкладок одной формы.
+ */
+export interface RegisterFormData {
+  login: string;
+  password: string;
+
+  // --- поля только для продавца:
+  phone_number?: string;   // номер телефона ответственного лица
+  director_name?: string;  // ФИО директора
+  legal_address?: string;  // юридический адрес
+  inn?: string;            // ИНН
+}
+
+export interface Product {
+  id: number;
   category: string;
-  material: string | null;
-  stamp: string; // Replaces 'brand'
-  city: string; // Replaces 'country'
+  name: string;
+  material: string;
   gost: string;
-  diameter: number;
-  thickness: number;
-  width: number;
-  length: number;
+  dimensions: string;
+  weight_per_meter?: number;
+  price_per_ton: number;
+  availability: number;
   supplier: string;
-  price: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type RequestItem = {
+  category?: string;
+  stamp?: string;
+  state_standard?: string; // ГОСТ
+  city?: string;
+  thickness?: number | null;
+  length?: number | null;
+  width?: number | null;
+  diameter?: number | null;
 };
 
+export type RequestCreate = {
+  items: RequestItem[];
+  comment?: string;
+};
 
-export interface ResultItem {
-  id: number;
-  name: string;
-  category: string;
-  stamp: string;
-  gost: string;
-  city: string;
-  thickness: string | null;
-  length: string | null;
-  width: string | null;
-  diameter: string | null;
-  price: number | null;
-  supplier: string;
-  material: string | null;
-}
+export type BuyerProfile = {
+  delivery_address?: string | null;
+};

@@ -11,6 +11,7 @@ class Buyer(Base):
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean(), default=True)
     role = Column(String, nullable=False)
+    delivery_address = Column(String, nullable=True)
 
 
 class Seller(Base):
