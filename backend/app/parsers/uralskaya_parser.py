@@ -8,7 +8,6 @@ import os
 def parse_uralskaya_metals_file(filename: str) -> tuple[List[Dict], Dict]:
     """
     Парсит файл Уральской металлобазы и возвращает данные о металлах и контакты.
-    Основан на коде из parser/parse_metals.py
     """
     df = pd.read_excel(filename, header=None)
     

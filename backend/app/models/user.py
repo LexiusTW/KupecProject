@@ -19,6 +19,12 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     delivery_address = Column(String, nullable=True)
     
+    # Поля для продавцов
+    inn = Column(String(12), nullable=True)
+    director_name = Column(String(100), nullable=True)
+    phone_number = Column(String(20), nullable=True)
+    legal_address = Column(String(200), nullable=True)
+    
     # CRM relationships
     sent_messages = relationship("Message", foreign_keys="Message.sender_id", back_populates="sender")
     received_messages = relationship("Message", foreign_keys="Message.receiver_id", back_populates="receiver")
