@@ -1,18 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import SearchForm, { SearchFormData } from './components/SearchForm';
-import ResultsTable from './components/ResultsTable';
-import ProductModal from './components/ProductModal';
-import GostModal from './components/GostModal';
-import Header from './components/Header';
-import UpdateStatus from './components/UpdateStatus';
-import Footer from './components/Footer';
-import type { Product } from './components/types'; // ✅ правильный импорт
+import SearchForm, { SearchFormData } from '../components/SearchForm';
+import ResultsTable from '../components/ResultsTable';
+import ProductModal from '../components/ProductModal';
+import GostModal from '../components/GostModal';
+import Header from '../components/Header';
+import UpdateStatus from '../components/UpdateStatus';
+import Footer from '../components/Footer';
+import type { Product } from '../components/types';
 
 export default function Home() {
   const [filters, setFilters] = useState<SearchFormData | null>(null);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null); // ✅ правильный тип
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedGost, setSelectedGost] = useState<{ gost: string; product: Product } | null>(null);
   const [showProductModal, setShowProductModal] = useState(false);
   const [showGostModal, setShowGostModal] = useState(false);

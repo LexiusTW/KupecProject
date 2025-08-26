@@ -32,4 +32,8 @@ class Settings:
     COOKIE_SAMESITE: str = os.getenv("COOKIE_SAMESITE", "lax").lower()
     COOKIE_PATH: str = os.getenv("COOKIE_PATH", "/")
 
+    DADATA_TOKEN: str = os.getenv("DADATA_TOKEN", "")
+    DADATA_SECRET: str = os.getenv("DADATA_SECRET", "")
+    DADATA_TIMEOUT: float = float(os.getenv("DADATA_TIMEOUT", "2.0"))
+
 settings = Settings()

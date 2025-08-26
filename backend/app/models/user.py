@@ -12,9 +12,12 @@ class User(Base):
     username = Column(String(50), unique=True, index=True, nullable=False)
     email = Column(String(100), unique=True, index=True, nullable=False)
     full_name = Column(String(100), nullable=False)
+    login = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
     role = Column(String(20), default="client")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    delivery_address = Column(String, nullable=True)
     
     # CRM relationships
     sent_messages = relationship("Message", foreign_keys="Message.sender_id", back_populates="sender")

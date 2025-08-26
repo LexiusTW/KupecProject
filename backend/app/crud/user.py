@@ -60,3 +60,12 @@ def authenticate(db: Session, *, login: str, password: str) -> Optional[UserLike
     if not verify_password(password, user.hashed_password):
         return None
     return user
+
+def update_buyer_address(db: Session, *, user_id: int, delivery_address: str) -> Optional[Buyer]:
+    buyer = db.query(Buyer).get(user_id)
+    if not buyer:
+        return None
+    buyer.delivery_address = delivery_address
+    db.commit()
+    db.refresh(buyer)
+    return buyer
