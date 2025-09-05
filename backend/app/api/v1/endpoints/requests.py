@@ -1,6 +1,9 @@
+from typing import Any, Dict, List
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session as SyncSession, joinedload
+from sqlalchemy.orm import joinedload
 
 from app.api.deps import get_db, get_current_user
 from app.models.user import Buyer, Seller
@@ -9,6 +12,19 @@ from app.schemas.request import RequestCreate, RequestOut, RequestItemCreate
 
 router = APIRouter()
 
+def _infer_kind(it: RequestItemCreate) -> str:
+    """Если kind не задан, определяем:
+    - metal: есть хоть один из (stamp/state_standard/size/thickness/length/width/diameter)
+    - иначе generic
+    """
+    if it.kind in ("metal", "generic"):
+        return it.kind
+    metal_signals = any([
+        bool(it.stamp), bool(it.state_standard), bool(it.size),
+        (it.thickness is not None), (it.length is not None),
+        (it.width is not None), (it.diameter is not None)
+    ])
+    return "metal" if metal_signals else "generic"
 
 @router.get("/requests/me")
 async def list_my_requests(
@@ -16,54 +32,47 @@ async def list_my_requests(
     user = Depends(get_current_user),
 ):
     if isinstance(user, Seller):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Только для покупателей")
+        return []
 
-    holder = {"rows": []}
+    q = (
+        select(Request)
+        .where(Request.buyer_id == user.id)
+        .options(joinedload(Request.items))
+        .order_by(Request.created_at.desc())
+    )
+    rows = (await db.execute(q)).scalars().all()
 
-    def _sync_list(sdb: SyncSession):
-        q = (
-            sdb.query(Request)
-            .options(joinedload(Request.items))
-            .filter(Request.buyer_id == user.id)
-            .order_by(Request.id.desc())
-        )
-        holder["rows"] = [
-            {
-                "id": r.id,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-                "delivery_address": r.delivery_address,
-                "comment": r.comment,
-                "items": [
-                    {
-                        "id": it.id,
-                        "kind": it.kind,
-                        "category": it.category,
-                        "quantity": it.quantity,
-                        "comment": it.comment,
-
-                        # metal
-                        "stamp": it.stamp,
-                        "state_standard": it.state_standard,
-                        "city": it.city,
-                        "thickness": it.thickness,
-                        "length": it.length,
-                        "width": it.width,
-                        "diameter": it.diameter,
-                        "allow_analogs": it.allow_analogs,
-
-                        # generic
-                        "name": it.name,
-                        "note": it.note,
-                    }
-                    for it in r.items or []
-                ],
-            }
-            for r in q.all()
-        ]
-
-    await db.run_sync(_sync_list)
-    return holder["rows"]
-
+    result: List[Dict[str, Any]] = []
+    for r in rows:
+        result.append({
+            "id": r.id,
+            "delivery_address": r.delivery_address,
+            "comment": r.comment,
+            "created_at": r.created_at,
+            "items": [
+                {
+                    "id": it.id,
+                    "kind": it.kind,
+                    "category": it.category,
+                    "size": it.size,
+                    "dims": it.dims,
+                    "uom": it.uom,
+                    "stamp": it.stamp,
+                    "state_standard": it.state_standard,
+                    "thickness": it.thickness,
+                    "length": it.length,
+                    "width": it.width,
+                    "diameter": it.diameter,
+                    "allow_analogs": it.allow_analogs,
+                    "name": it.name,
+                    "note": it.note,
+                    "quantity": it.quantity,
+                    "comment": it.comment,
+                }
+                for it in (r.items or [])
+            ],
+        })
+    return result
 
 @router.post("/requests", response_model=RequestOut, status_code=status.HTTP_201_CREATED)
 async def create_request(
@@ -71,65 +80,52 @@ async def create_request(
     db: AsyncSession = Depends(get_db),
     user = Depends(get_current_user),
 ):
-    if isinstance(user, Seller):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Только для покупателей")
+    # адрес: берём из payload (если прислали), иначе — из профиля покупателя
+    delivery_address = payload.delivery_address or getattr(user, "delivery_address", None)
 
-    # Сохраняем заявку и позиции
-    holder = {"req_id": None}
+    req = Request(
+        buyer_id=user.id,  # id берётся из токена через get_current_user
+        delivery_address=delivery_address,
+        comment=payload.comment,
+    )
+    db.add(req)
+    await db.flush()  # получим req.id
 
-    def _infer_kind(it: RequestItemCreate) -> str:
-        k = (it.kind or "").strip().lower()
-        if k in ("metal", "generic"):
-            return k
-        # эвристика: если указаны поля metal — считаем metal, иначе generic
-        metal_markers = any([it.state_standard, it.stamp, it.thickness, it.length, it.width, it.diameter, it.allow_analogs])
-        return "metal" if metal_markers else "generic"
+    for it in payload.items:
+        kind = _infer_kind(it)
 
-    def _sync_create(sdb: SyncSession):
-        req = Request(
-            buyer_id=user.id,
-            delivery_address=getattr(user, "delivery_address", None),
-            comment=payload.comment or None,
-        )
-        sdb.add(req)
-        sdb.flush()
+        if kind == "metal":
+            row = RequestItem(
+                request_id=req.id,
+                kind="metal",
+                category=it.category,
+                quantity=it.quantity,
+                comment=it.comment,
+                size=it.size,
+                stamp=it.stamp,
+                state_standard=it.state_standard,
+                thickness=it.thickness,
+                length=it.length,
+                width=it.width,
+                diameter=it.diameter,
+                allow_analogs=it.allow_analogs,
+            )
+        else:
+            if not it.name:
+                raise HTTPException(status_code=422, detail="Для generic-позиции требуется 'name'")
+            row = RequestItem(
+                request_id=req.id,
+                kind="generic",
+                category=it.category or "Прочее",
+                quantity=it.quantity,
+                comment=it.comment,
+                dims=it.dims,
+                uom=it.uom,
+                name=it.name,
+                note=it.note,
+            )
 
-        for it in payload.items:
-            kind = _infer_kind(it)
+        db.add(row)
 
-            if kind == "metal":
-                row = RequestItem(
-                    request_id=req.id,
-                    kind="metal",
-                    # metal
-                    category=it.category,
-                    state_standard=it.state_standard,
-                    stamp=it.stamp,
-                    city=it.city,
-                    thickness=it.thickness,
-                    length=it.length,
-                    width=it.width,
-                    diameter=it.diameter,
-                    quantity=it.quantity,
-                    allow_analogs=bool(it.allow_analogs) if it.allow_analogs is not None else None,
-                    comment=it.comment,
-                )
-            else:
-                row = RequestItem(
-                    request_id=req.id,
-                    kind="generic",
-                    # generic
-                    category=it.category,   # название пользовательской категории
-                    name=it.name,
-                    note=it.note,
-                    quantity=it.quantity,
-                    comment=it.comment,
-                )
-
-            sdb.add(row)
-
-        sdb.commit()
-        holder["req_id"] = req.id
-
-    await db.run_sync(_sync_create)
-    return {"id": holder["req_id"]}
+    await db.commit()
+    return {"id": req.id}

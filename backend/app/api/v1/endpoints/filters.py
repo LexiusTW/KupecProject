@@ -77,7 +77,7 @@ async def get_suppliers(
     if stamp:
         query = query.where(Metal.stamp == stamp)
     if gost:
-        query = query.where(Metal.gost == gost)
+        query = query.where(Metal.state_standard == gost)
     if city:
         query = query.where(Warehouse.city == city)
 

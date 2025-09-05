@@ -1,32 +1,53 @@
-from typing import List, Optional
-from pydantic import BaseModel
+from typing import List, Optional, Literal
+from pydantic import BaseModel, Field
+from datetime import datetime
 
-class RequestItemCreate(BaseModel):
-    # новый маркер типа позиции
-    kind: Optional[str] = None  # 'metal' | 'generic' (если не передан — определим на бэке эвристикой)
+Role = Literal["buyer", "seller"]
 
-    # общее
-    category: Optional[str] = None     # metal: подкатегория металла; generic: пользовательская категория
-    quantity: Optional[float] = None
+class RequestItemBase(BaseModel):
+    # общий блок
+    kind: Optional[Literal["metal", "generic"]] = None
+    category: Optional[str] = None
+    quantity: Optional[float] = Field(default=None, ge=0)
     comment: Optional[str] = None
+
+    # НОВОЕ: универсальные «строковые» поля
+    size: Optional[str] = None   # для metal (строковой размер на витрину)
+    dims: Optional[str] = None   # для generic (свободные характеристики)
+    uom: Optional[str] = None    # для generic (ед. изм.)
 
     # metal
     stamp: Optional[str] = None
     state_standard: Optional[str] = None
-    city: Optional[str] = None
-    thickness: Optional[float] = None
-    length: Optional[float] = None
-    width: Optional[float] = None
-    diameter: Optional[float] = None
+    thickness: Optional[float] = Field(default=None, ge=0)
+    length: Optional[float] = Field(default=None, ge=0)
+    width: Optional[float] = Field(default=None, ge=0)
+    diameter: Optional[float] = Field(default=None, ge=0)
     allow_analogs: Optional[bool] = None
 
     # generic
     name: Optional[str] = None
     note: Optional[str] = None
 
+    model_config = {"from_attributes": True}
+
+class RequestItemCreate(RequestItemBase):
+    """Элементы, которые прилетают с фронта при создании заявки.
+    kind можно не присылать — мы определим на бэке по заполненным полям.
+    """
+    pass
+
 class RequestCreate(BaseModel):
     items: List[RequestItemCreate]
     comment: Optional[str] = None
+    delivery_address: Optional[str] = None  # если фронт когда-то пришлёт адрес прямо тут
+    model_config = {"from_attributes": True}
+
+class RequestItemOut(RequestItemBase):
+    id: int
+    model_config = {"from_attributes": True}
 
 class RequestOut(BaseModel):
     id: int
+    # можно расширить при необходимости
+    model_config = {"from_attributes": True}

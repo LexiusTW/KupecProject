@@ -1,216 +1,155 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
-from sqlalchemy.orm import Session
-import json
-
+# app/v1/endpoints/crm.py
+from enum import Enum
+from typing import Literal, List
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.db.session import get_db
-from app.models.user import User, Chat, ChatParticipant, ChatMessage, Email, Message
-from app.schemas.crm import (
-    UserCreate, User as UserSchema,
-    ChatCreate, Chat as ChatSchema,
-    ChatMessageCreate, ChatMessage as ChatMessageSchema,
-    EmailCreate, Email as EmailSchema,
-    MessageCreate, Message as MessageSchema
-)
+from app.models.crm import Chat, ChatParticipant, ChatMessage, Email
 from app.core.websocket_manager import manager
+from app.schemas.crm import ChatMessageOut, ChatMessageIn, ChatCreate, ChatOut, Role, EmailCreate, EmailOut
 
 router = APIRouter()
 
 
-@router.post("/users/", response_model=UserSchema)
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
-    """Создание нового пользователя"""
-    db_user = User(**user.dict())
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+@router.post("/chats/", response_model=ChatOut, status_code=status.HTTP_201_CREATED)
+async def create_chat(payload: ChatCreate, db: AsyncSession = Depends(get_db)):
+    chat = Chat()
+    db.add(chat)
+    await db.flush()  # получим chat.id без коммита
 
+    db.add_all([
+        ChatParticipant(chat_id=chat.id, buyer_id=payload.buyer_id, seller_id=None),
+        ChatParticipant(chat_id=chat.id, buyer_id=None, seller_id=payload.seller_id),
+    ])
+    await db.commit()
+    await db.refresh(chat)
+    return chat
 
-@router.get("/users/", response_model=List[UserSchema])
-def get_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    """Получение списка пользователей"""
-    users = db.query(User).offset(skip).limit(limit).all()
-    return users
+@router.get("/chats/for/{role}/{user_id}", response_model=List[ChatOut])
+async def get_user_chats(role: Role, user_id: int, db: AsyncSession = Depends(get_db)):
+    cp = ChatParticipant
+    q = select(Chat).join(cp)
+    if role == "buyer":
+        q = q.where(cp.buyer_id == user_id)
+    else:
+        q = q.where(cp.seller_id == user_id)
+    rows = (await db.execute(q)).scalars().all()
+    return rows
 
+@router.get("/chats/{chat_id}/messages", response_model=List[ChatMessageOut])
+async def get_chat_messages(chat_id: int, db: AsyncSession = Depends(get_db)):
+    q = select(ChatMessage).where(ChatMessage.chat_id == chat_id).order_by(ChatMessage.sent_at)
+    rows = (await db.execute(q)).scalars().all()
+    out = []
+    for m in rows:
+        if m.sender_buyer_id is not None:
+            sender_role, sender_id = "buyer", m.sender_buyer_id
+        else:
+            sender_role, sender_id = "seller", m.sender_seller_id
+        out.append(ChatMessageOut(
+            id=m.id, chat_id=m.chat_id, content=m.content, sent_at=m.sent_at,
+            sender_id=sender_id, sender_role=sender_role
+        ))
+    return out
 
-@router.get("/users/{user_id}", response_model=UserSchema)
-def get_user(user_id: int, db: Session = Depends(get_db)):
-    """Получение пользователя по ID"""
-    user = db.query(User).filter(User.id == user_id).first()
-    if user is None:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    return user
+@router.post("/chats/{chat_id}/messages", response_model=ChatMessageOut, status_code=201)
+async def send_chat_message(chat_id: int, sender_role: Role, sender_id: int,
+                            payload: ChatMessageIn, db: AsyncSession = Depends(get_db)):
+    if sender_role == "buyer":
+        msg = ChatMessage(chat_id=chat_id, sender_buyer_id=sender_id, content=payload.content)
+    else:
+        msg = ChatMessage(chat_id=chat_id, sender_seller_id=sender_id, content=payload.content)
+    db.add(msg)
+    await db.commit()
+    await db.refresh(msg)
 
+    resp = ChatMessageOut(
+        id=msg.id, chat_id=msg.chat_id, content=msg.content, sent_at=msg.sent_at,
+        sender_id=sender_id, sender_role=sender_role
+    )
 
-@router.post("/chats/", response_model=ChatSchema)
-def create_chat(chat: ChatCreate, db: Session = Depends(get_db)):
-    """Создание нового чата"""
-    if len(chat.participant_ids) != 2:
-        raise HTTPException(status_code=400, detail="Чат должен содержать ровно 2 участника")
-    
-    users = db.query(User).filter(User.id.in_(chat.participant_ids)).all()
-    if len(users) != 2:
-        raise HTTPException(status_code=404, detail="Один или несколько пользователей не найдены")
-    
-    db_chat = Chat()
-    db.add(db_chat)
-    db.commit()
-    db.refresh(db_chat)
-    
-    for user_id in chat.participant_ids:
-        participant = ChatParticipant(chat_id=db_chat.id, user_id=user_id)
-        db.add(participant)
-    
-    db.commit()
-    db.refresh(db_chat)
-    return db_chat
+    await manager.broadcast_to_chat(
+        {"type": "chat_message", "data": resp.dict()},
+        chat_id, db
+    )
+    return resp
 
+@router.post("/emails/", response_model=EmailOut, status_code=status.HTTP_201_CREATED)
+async def send_email(sender_role: Role, sender_id: int, payload: EmailCreate, db: AsyncSession = Depends(get_db)):
+    if sender_role == "buyer":
+        email = Email(
+            subject=payload.subject, content=payload.content,
+            sender_buyer_id=sender_id,
+            receiver_buyer_id=payload.receiver_id if payload.receiver_role == "buyer" else None,
+            receiver_seller_id=payload.receiver_id if payload.receiver_role == "seller" else None,
+        )
+    else:
+        email = Email(
+            subject=payload.subject, content=payload.content,
+            sender_seller_id=sender_id,
+            receiver_buyer_id=payload.receiver_id if payload.receiver_role == "buyer" else None,
+            receiver_seller_id=payload.receiver_id if payload.receiver_role == "seller" else None,
+        )
+    db.add(email)
+    await db.commit()
+    await db.refresh(email)
 
-@router.get("/chats/user/{user_id}", response_model=List[ChatSchema])
-def get_user_chats(user_id: int, db: Session = Depends(get_db)):
-    """Получение чатов пользователя"""
-    chats = db.query(Chat).join(ChatParticipant).filter(ChatParticipant.user_id == user_id).all()
-    return chats
+    # пуш уведомления адресату
+    await manager.send_personal_message(
+        {
+            "type": "new_email",
+            "data": {"email_id": email.id, "subject": email.subject}
+        },
+        payload.receiver_role,
+        payload.receiver_id,
+    )
+    return email
 
+@router.get("/emails/inbox/{role}/{user_id}", response_model=List[EmailOut])
+async def get_inbox(role: Role, user_id: int, db: AsyncSession = Depends(get_db)):
+    q = select(Email)
+    if role == "buyer":
+        q = q.where(Email.receiver_buyer_id == user_id, Email.is_deleted == False)
+    else:
+        q = q.where(Email.receiver_seller_id == user_id, Email.is_deleted == False)
+    q = q.order_by(Email.sent_at.desc())
+    return (await db.execute(q)).scalars().all()
 
-@router.get("/chats/{chat_id}/messages", response_model=List[ChatMessageSchema])
-def get_chat_messages(chat_id: int, db: Session = Depends(get_db)):
-    """Получение сообщений чата"""
-    messages = db.query(ChatMessage).filter(ChatMessage.chat_id == chat_id).order_by(ChatMessage.sent_at).all()
-    return messages
+@router.get("/emails/sent/{role}/{user_id}", response_model=List[EmailOut])
+async def get_sent(role: Role, user_id: int, db: AsyncSession = Depends(get_db)):
+    q = select(Email)
+    if role == "buyer":
+        q = q.where(Email.sender_buyer_id == user_id)
+    else:
+        q = q.where(Email.sender_seller_id == user_id)
+    q = q.order_by(Email.sent_at.desc())
+    return (await db.execute(q)).scalars().all()
 
-
-@router.post("/emails/", response_model=EmailSchema)
-def send_email(email: EmailCreate, sender_id: int, db: Session = Depends(get_db)):
-    """Отправка email"""
-    receiver = db.query(User).filter(User.id == email.receiver_id).first()
-    if not receiver:
-        raise HTTPException(status_code=404, detail="Получатель не найден")
-    
-    db_email = Email(**email.dict(), sender_id=sender_id)
-    db.add(db_email)
-    db.commit()
-    db.refresh(db_email)
-    
-    # Отправляем уведомление через WebSocket
-    notification = {
-        "type": "new_email",
-        "data": {
-            "email_id": db_email.id,
-            "subject": db_email.subject,
-            "sender_id": sender_id
-        }
-    }
-    
-    import asyncio
-    try:
-        asyncio.create_task(manager.send_personal_message(json.dumps(notification), email.receiver_id))
-    except Exception as e:
-        print(f"Ошибка отправки WebSocket уведомления: {e}")
-    
-    return db_email
-
-
-@router.get("/emails/inbox/{user_id}", response_model=List[EmailSchema])
-def get_inbox(user_id: int, db: Session = Depends(get_db)):
-    """Получение входящих писем"""
-    emails = db.query(Email).filter(
-        Email.receiver_id == user_id,
-        Email.is_deleted == False
-    ).order_by(Email.sent_at.desc()).all()
-    return emails
-
-
-@router.get("/emails/sent/{user_id}", response_model=List[EmailSchema])
-def get_sent_emails(user_id: int, db: Session = Depends(get_db)):
-    """Получение отправленных писем"""
-    emails = db.query(Email).filter(Email.sender_id == user_id).order_by(Email.sent_at.desc()).all()
-    return emails
-
-
-@router.post("/messages/", response_model=MessageSchema)
-def send_message(message: MessageCreate, sender_id: int, db: Session = Depends(get_db)):
-    """Отправка личного сообщения"""
-    receiver = db.query(User).filter(User.id == message.receiver_id).first()
-    if not receiver:
-        raise HTTPException(status_code=404, detail="Получатель не найден")
-    
-    db_message = Message(**message.dict(), sender_id=sender_id)
-    db.add(db_message)
-    db.commit()
-    db.refresh(db_message)
-    
-    # Отправляем уведомление через WebSocket
-    notification = {
-        "type": "new_message",
-        "data": {
-            "message_id": db_message.id,
-            "content": db_message.content,
-            "sender_id": sender_id
-        }
-    }
-    
-    import asyncio
-    try:
-        asyncio.create_task(manager.send_personal_message(json.dumps(notification), message.receiver_id))
-    except Exception as e:
-        print(f"Ошибка отправки WebSocket уведомления: {e}")
-    
-    return db_message
-
-
-@router.get("/messages/inbox/{user_id}", response_model=List[MessageSchema])
-def get_inbox_messages(user_id: int, db: Session = Depends(get_db)):
-    """Получение входящих сообщений"""
-    messages = db.query(Message).filter(Message.receiver_id == user_id).order_by(Message.sent_at.desc()).all()
-    return messages
-
-
-@router.get("/messages/sent/{user_id}", response_model=List[MessageSchema])
-def get_sent_messages(user_id: int, db: Session = Depends(get_db)):
-    """Получение отправленных сообщений"""
-    messages = db.query(Message).filter(Message.sender_id == user_id).order_by(Message.sent_at.desc()).all()
-    return messages
-
-
-@router.websocket("/ws/chat/{user_id}")
-async def websocket_chat_endpoint(websocket: WebSocket, user_id: int):
-    """WebSocket endpoint для чата"""
-    await manager.connect(websocket, user_id)
+# ---------- WebSocket ----------
+@router.websocket("/ws/chat/{role}/{user_id}")
+async def websocket_chat_endpoint(websocket: WebSocket, role: Role, user_id: int, db: AsyncSession = Depends(get_db)):
+    await manager.connect(websocket, role, user_id)
     try:
         while True:
-            data = await websocket.receive_text()
-            message_data = json.loads(data)
-            
-            if message_data["type"] == "chat_message":
-                db = next(get_db())
-                try:
-                    chat_message = ChatMessage(
-                        chat_id=message_data["chat_id"],
-                        sender_id=user_id,
-                        content=message_data["content"]
-                    )
-                    db.add(chat_message)
-                    db.commit()
-                    db.refresh(chat_message)
-                    
-                    await manager.broadcast_to_chat(
-                        json.dumps({
-                            "type": "chat_message",
-                            "data": {
-                                "id": chat_message.id,
-                                "chat_id": chat_message.chat_id,
-                                "sender_id": chat_message.sender_id,
-                                "content": chat_message.content,
-                                "sent_at": chat_message.sent_at.isoformat()
-                            }
-                        }),
-                        message_data["chat_id"],
-                        db
-                    )
-                finally:
-                    db.close()
-                    
+            data = await websocket.receive_json()
+            if data.get("type") == "chat_message":
+                chat_id = int(data["chat_id"])
+                content = str(data["content"])
+                # сохраняем сообщение от инициатора
+                if role == "buyer":
+                    msg = ChatMessage(chat_id=chat_id, sender_buyer_id=user_id, content=content)
+                else:
+                    msg = ChatMessage(chat_id=chat_id, sender_seller_id=user_id, content=content)
+                db.add(msg)
+                await db.commit()
+                await db.refresh(msg)
+                # широковещательная отправка всем участникам чата
+                await manager.broadcast_to_chat(
+                    {"type": "chat_message", "data": {"id": msg.id, "chat_id": chat_id, "content": content}},
+                    chat_id,
+                    db,
+                )
     except WebSocketDisconnect:
-        manager.disconnect(websocket, user_id)
+        await manager.disconnect(websocket, role, user_id)

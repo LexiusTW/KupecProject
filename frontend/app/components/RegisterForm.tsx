@@ -90,7 +90,7 @@ export default function RegisterForm() {
 
         <div>
           <label htmlFor="password" className={label}>Пароль</label>
-          <input id="password" type="password" {...register('password', { required: 'Пароль обязателен', minLength: { value: 6, message: 'Не менее 6 символов' } })} className={input} />
+          <input id="password" type="password" {...register('password', { required: 'Пароль обязателен', minLength: { value: 8, message: 'Не менее 8 символов' } })} className={input} />
           {errors.password && <p className={err}>{errors.password.message}</p>}
         </div>
 

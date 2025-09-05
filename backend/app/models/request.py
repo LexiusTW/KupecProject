@@ -19,13 +19,18 @@ class RequestItem(Base):
     id = Column(Integer, primary_key=True, index=True)
     request_id = Column(Integer, ForeignKey("requests.id"), nullable=False)
 
-    # общий минимум
-    kind = Column(String, nullable=True)           # 'metal' | 'generic'
-    category = Column(String, nullable=True)       # для metal: подкатегория металла; для generic: название пользовательской категории
-    quantity = Column(Float, nullable=True)        # количество (и для metal, и для generic)
-    comment = Column(String, nullable=True)        # комментарий к позиции
+    # общий блок
+    kind = Column(String, nullable=True)        # "metal" | "generic"
+    category = Column(String, nullable=True)    # пользовательская категория
+    quantity = Column(Float, nullable=True)
+    comment = Column(String, nullable=True)
 
-    # поля только для metal:
+    # НОВОЕ: универсальное строковое поле размера (для металла) и характеристики/ед.изм. (для generic)
+    size = Column(String, nullable=True)        # для metal: "1x1x1" и т.п. (отображение)
+    dims = Column(String, nullable=True)        # для generic: произвольные характеристики
+    uom  = Column(String, nullable=True)        # для generic: ед. изм. (шт/м/кг/…)
+
+    # блок только для metal:
     stamp = Column(String, nullable=True)
     state_standard = Column(String, nullable=True)  # ГОСТ/ТУ
 
@@ -35,7 +40,7 @@ class RequestItem(Base):
     diameter = Column(Float, nullable=True)
     allow_analogs = Column(Boolean, nullable=True)
 
-    # поля только для generic:
+    # блок только для generic:
     name = Column(String, nullable=True)
     note = Column(String, nullable=True)
 

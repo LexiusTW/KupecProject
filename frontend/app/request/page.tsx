@@ -1,102 +1,37 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
-import { useForm, Controller, useWatch } from 'react-hook-form';
-import { Listbox } from '@headlessui/react';
-import { ChevronUpDownIcon } from '@heroicons/react/20/solid';
 
 const API_BASE_URL = 'https://ekbmetal.cloudpub.ru';
 
-const clsInput = 'w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500';
-const clsLabel = 'block text-sm font-medium text-gray-700 mb-1';
-const clsCard  = 'bg-white rounded-xl shadow p-5';
+// ---------------- Types ----------------
+type RowKind = 'metal' | 'generic';
 
-function SelectField({
-  label, value, onChange, options, placeholder = 'Выбрать',
-}: { label: string; value: string; onChange: (v: string) => void; options: string[]; placeholder?: string }) {
-  return (
-    <div>
-      <label className={clsLabel}>{label}</label>
-      <Listbox value={value || ''} onChange={onChange}>
-        <div className="relative">
-          <Listbox.Button className="relative w-full cursor-default rounded-md border border-gray-300 bg-white py-2 pl-4 pr-10 text-left shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
-            <span className="block truncate">{value || placeholder}</span>
-            <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-              <ChevronUpDownIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
-            </span>
-          </Listbox.Button>
-          <Listbox.Options className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
-            {options.map((opt, i) => (
-              <Listbox.Option
-                key={`${opt}-${i}`}
-                value={opt}
-                className={({ active }) =>
-                  `relative cursor-default select-none py-2 pl-10 pr-4 ${
-                    active ? 'bg-amber-100 text-amber-900' : 'text-gray-900'
-                  }`
-                }
-              >
-                {opt}
-              </Listbox.Option>
-            ))}
-          </Listbox.Options>
-        </div>
-      </Listbox>
-    </div>
-  );
-}
-
-type MetalItemForm = {
-  mCategory: string;
-  gost: string;
-  grade: string;
-  diameter: string;
-  thickness: string;
-  length: string;
-  width: string;
-  quantity: string;
-  allowAnalogs: boolean;
-  comment: string;
-};
-
-type MetalItemSaved = {
+type MetalRow = {
+  _id: string;
   kind: 'metal';
-  category?: string;
-  state_standard?: string | null;
-  stamp?: string | null;
-  diameter?: number | null;
-  thickness?: number | null;
-  length?: number | null;
-  width?: number | null;
-  quantity?: number | null;
-  allow_analogs?: boolean;
-  comment?: string | null;
-  _editing?: boolean;
+  mCategory?: string; // Категория (лист/труба…)
+  size?: string;      // "1x1x1"
+  gost?: string;
+  grade?: string;
+  allowAnalogs?: boolean;
+  qty?: string;
+  comment?: string;
 };
 
-type GenericItemForm = {
-  name: string;
-  note: string;
-  quantity: string;
-  comment: string;
-};
-type GenericItemSaved = {
+type GenericRow = {
+  _id: string;
   kind: 'generic';
   name?: string;
-  note?: string;
-  quantity?: number | null;
-  comment?: string | null;
-  _editing?: boolean;
+  dims?: string;  // размеры/характеристики
+  uom?: string;   // ед. изм.
+  qty?: string;
+  comment?: string;
 };
 
-type CategoryGroup = {
-  id: string;
-  title: string;
-  editingTitle?: boolean;
-  items: Array<MetalItemSaved | GenericItemSaved>;
-};
+type Row = MetalRow | GenericRow;
 
 type OptionsPack = {
   categories: string[];
@@ -104,653 +39,623 @@ type OptionsPack = {
   standards: string[];
 };
 
-function MetalEditor({
-  initial, initialOptions, onSave, onCancel,
-}: {
-  initial?: MetalItemSaved;
-  initialOptions: OptionsPack;
-  onSave: (it: MetalItemSaved) => void;
-  onCancel: () => void;
-}) {
-  const { control, register, handleSubmit, setValue } = useForm<MetalItemForm>({
-    defaultValues: {
-      mCategory: initial?.category || '',
-      gost: initial?.state_standard || '',
-      grade: initial?.stamp || '',
-      diameter: initial?.diameter?.toString() || '',
-      thickness: initial?.thickness?.toString() || '',
-      length: initial?.length?.toString() || '',
-      width: initial?.width?.toString() || '',
-      quantity: initial?.quantity?.toString() || '',
-      allowAnalogs: !!initial?.allow_analogs,
-      comment: initial?.comment || '',
-    },
-  });
+type SavedMetalItem = {
+  kind: 'metal';
+  category?: string | null;
+  size?: string | null;           // показываем в таблице
+  state_standard?: string | null;
+  stamp?: string | null;
+  quantity: number | null;
+  allow_analogs: boolean;
+  comment?: string | null;
+};
 
-  const [cats]   = useState<string[]>(initialOptions.categories);
-  const [gosts, setGosts]   = useState<string[]>(initialOptions.standards);
-  const [grades, setGrades] = useState<string[]>(initialOptions.grades);
+type SavedGenericItem = {
+  kind: 'generic';
+  category: string; // пользовательская категория
+  name: string;
+  dims?: string | null; // размеры/характеристики
+  uom?: string | null;  // ед. изм.
+  quantity: number | null;
+  comment: string;
+};
 
-  const gostsCache  = useRef(new Map<string, string[]>());
-  const gradesCache = useRef(new Map<string, string[]>());
+type SavedItem = SavedMetalItem | SavedGenericItem;
 
-  const { mCategory, gost, grade } = useWatch({ control }) as MetalItemForm;
+type CategoryBlock = {
+  id: string;
+  title: string;        // ввод пользователя ("Металлопрокат" или любое другое)
+  kind: RowKind;        // вычисляется из title: "Металлопрокат" => metal, иначе generic
+  editors: Row[];       // незасейвленные позиции
+  saved: SavedItem[];   // сохранённые позиции
+  editingTitle: boolean;// управляет показом инпута / жирного заголовка + "Изменить"
+};
 
-  useEffect(() => {
-    if (!mCategory) { setGosts(initialOptions.standards); return; }
-    const key = `${mCategory}|${grade||''}`;
-    const cached = gostsCache.current.get(key);
-    if (cached) { setGosts(cached); return; }
+type DaDataAddr = { value: string; unrestricted_value?: string };
 
-    const params = new URLSearchParams();
-    params.append('category', mCategory);
-    if (grade) params.append('stamp', grade);
-
-    (async () => {
-      try {
-        const r = await fetch(`${API_BASE_URL}/api/v1/gosts?${params}`, { credentials: 'include' });
-        if (r.ok) {
-          const data: string[] = await r.json();
-          gostsCache.current.set(key, data);
-          setGosts(data);
-        }
-      } catch {}
-    })();
-  }, [mCategory, grade]);
-
-  useEffect(() => {
-    if (!mCategory) { setGrades(initialOptions.grades); return; }
-    const key = `${mCategory}|${gost||''}`;
-    const cached = gradesCache.current.get(key);
-    if (cached) { setGrades(cached); return; }
-
-    const params = new URLSearchParams();
-    params.append('category', mCategory);
-    if (gost) params.append('gost', gost);
-
-    (async () => {
-      try {
-        const r = await fetch(`${API_BASE_URL}/api/v1/stamps?${params}`, { credentials: 'include' });
-        if (r.ok) {
-          const data: string[] = await r.json();
-          gradesCache.current.set(key, data);
-          setGrades(data);
-        }
-      } catch {}
-    })();
-  }, [mCategory, gost]);
-
-  useEffect(() => {
-    setValue('gost', '');
-    setValue('grade', '');
-  }, [mCategory]);
-
-  const renderSelect = (name: keyof MetalItemForm, label: string, opts: string[]) => (
-    <Controller
-      name={name}
-      control={control}
-      render={({ field }) => (
-        <SelectField
-          label={label}
-          value={field.value}
-          onChange={(v) => field.onChange(v)}
-          options={opts}
-        />
-      )}
-    />
-  );
-
-  const onSubmit = (data: MetalItemForm) => {
-    onSave({
-      kind: 'metal',
-      category: data.mCategory || undefined,
-      state_standard: data.gost || null,
-      stamp: data.grade || null,
-      diameter: data.diameter ? Number(data.diameter) : null,
-      thickness: data.thickness ? Number(data.thickness) : null,
-      length: data.length ? Number(data.length) : null,
-      width: data.width ? Number(data.width) : null,
-      quantity: data.quantity ? Number(data.quantity) : null,
-      allow_analogs: !!data.allowAnalogs,
-      comment: data.comment || null,
-      _editing: false,
-    });
-  };
-
-  return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        {renderSelect('mCategory', 'Наименование', cats)}
-        {renderSelect('gost', 'ГОСТ / ТУ', gosts)}
-        {renderSelect('grade', 'Марка', grades)}
-
-        <div>
-          <label className={clsLabel}>Количество</label>
-          <input type="number" step="any" min="0" {...register('quantity')} className={clsInput} />
-        </div>
-
-        <div className="flex items-end">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" {...register('allowAnalogs')} className="h-4 w-4" />
-            <span className="text-sm text-gray-700">Аналоги</span>
-          </label>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        <div>
-          <label className={clsLabel}>Диаметр (мм)</label>
-          <input type="number" step="any" min="0" {...register('diameter')} className={clsInput} />
-        </div>
-        <div>
-          <label className={clsLabel}>Толщина (мм)</label>
-          <input type="number" step="any" min="0" {...register('thickness')} className={clsInput} />
-        </div>
-        <div>
-          <label className={clsLabel}>Длина (м)</label>
-          <input type="number" step="any" min="0" {...register('length')} className={clsInput} />
-        </div>
-        <div>
-          <label className={clsLabel}>Ширина (м)</label>
-          <input type="number" step="any" min="0" {...register('width')} className={clsInput} />
-        </div>
-        <div>
-          <label className={clsLabel}>Комментарий</label>
-          <input {...register('comment')} className={clsInput} placeholder="Комментарий к металлу" />
-        </div>
-      </div>
-
-      <div className="pt-1 flex gap-3">
-        <button type="submit" className="bg-amber-600 text-white px-4 py-2 rounded-md hover:bg-amber-700">
-          Сохранить
-        </button>
-        <button type="button" onClick={onCancel} className="border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50">
-          Отменить
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function GenericEditor({
-  initial, onSave, onCancel,
-}: {
-  initial?: GenericItemSaved;
-  onSave: (it: GenericItemSaved) => void;
-  onCancel: () => void;
-}) {
-  const { register, handleSubmit } = useForm<GenericItemForm>({
-    defaultValues: {
-      name: initial?.name || '',
-      note: initial?.note || '',
-      quantity: initial?.quantity?.toString() || '',
-      comment: initial?.comment || '',
-    },
-  });
-
-  const onSubmit = (d: GenericItemForm) => {
-    onSave({
-      kind: 'generic',
-      name: d.name || '',
-      note: d.note || '',
-      quantity: d.quantity ? Number(d.quantity) : null,
-      comment: d.comment || '',
-      _editing: false,
-    });
-  };
-
-  return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div className="md:col-span-2">
-          <label className={clsLabel}>Наименование</label>
-          <input className={clsInput} {...register('name', { required: true })} placeholder="Например: Доска строганая 50×150" />
-        </div>
-        <div>
-          <label className={clsLabel}>Количество</label>
-          <input type="number" step="any" min="0" className={clsInput} {...register('quantity')} placeholder="Количество" />
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <label className={clsLabel}>Примечание</label>
-          <input className={clsInput} {...register('note')} placeholder="Цвет, сорт, комплектация…" />
-        </div>
-        <div>
-          <label className={clsLabel}>Комментарий</label>
-          <input className={clsInput} {...register('comment')} placeholder="Комментарий к товару" />
-        </div>
-      </div>
-
-      <div className="pt-1 flex gap-3">
-        <button type="submit" className="bg-amber-600 text-white px-4 py-2 rounded-md hover:bg-amber-700">
-          Сохранить
-        </button>
-        <button type="button" onClick={onCancel} className="border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50">
-          Отменить
-        </button>
-      </div>
-    </form>
-  );
-}
-
-
-type RequestItemPayload =
-  | ({
-      // металл
-      kind: 'metal';
-      category?: string;
-      state_standard?: string | null;
-      stamp?: string | null;
-      diameter?: number | null;
-      thickness?: number | null;
-      length?: number | null;
-      width?: number | null;
-      quantity?: number | null;
-      allow_analogs?: boolean;
-      comment?: string | null;
-    })
-  | ({
-      // прочие категории
-      kind: 'generic';
-      category?: string; // сюда положим НАЗВАНИЕ пользовательской категории
-      name?: string;
-      note?: string;
-      quantity?: number | null;
-      comment?: string | null;
-    });
+const clsInput =
+  'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500';
+const clsBtn = 'px-4 py-2 rounded-md';
+const th = 'px-3 py-2 text-left text-xs font-semibold text-gray-600';
+const td = 'px-3 py-2';
 
 export default function RequestPage() {
-  // адрес доставки
+  // ---------------- Header fields ----------------
+  const [title, setTitle] = useState('');
+  const [deliveryAt, setDeliveryAt] = useState('');
   const [address, setAddress] = useState('');
-  const [addressEdit, setAddressEdit] = useState(true);
-  const [addressLoading, setAddressLoading] = useState(false);
 
-  // группы категорий
-  const [groups, setGroups] = useState<CategoryGroup[]>([
-    { id: crypto.randomUUID(), title: '', editingTitle: true, items: [] },
-  ]);
+  // флаги сохранения адреса
+  const [addressSaved, setAddressSaved] = useState(true);
+  const [addressDirty, setAddressDirty] = useState(false);
+  const [addrLoading, setAddrLoading] = useState(false);
 
-  // справочники для «Металл» (подгружаем на входе)
-  const [initialOptions, setInitialOptions] = useState<OptionsPack>({
-    categories: [], grades: [], standards: [],
+  // DaData
+  const [addrQuery, setAddrQuery] = useState('');
+  const [addrSugg, setAddrSugg] = useState<DaDataAddr[]>([]);
+  const [addrFocus, setAddrFocus] = useState(false); // показываем подсказки только при фокусе
+  const addrAbort = useRef<AbortController | null>(null);
+  const addrCache = useRef<Map<string, DaDataAddr[]>>(new Map()); // простейший кэш по префиксам
+
+  // ---------------- Options ----------------
+  const [opts, setOpts] = useState<OptionsPack>({
+    categories: [],
+    grades: [],
+    standards: [],
   });
 
-  // загрузка адреса и опций
+  // ---------------- Categories ----------------
+  const [cats, setCats] = useState<CategoryBlock[]>([]);
+  const [catFocus, setCatFocus] = useState<Record<string, boolean>>({}); // фокус на инпуте категории
+
+  // ------- Init: address from profile & options -------
   useEffect(() => {
     (async () => {
       try {
-        setAddressLoading(true);
         const r = await fetch(`${API_BASE_URL}/api/v1/users/me/address`, { credentials: 'include' });
         if (r.ok) {
           const data = await r.json();
-          if (data?.delivery_address) {
-            setAddress(data.delivery_address);
-            setAddressEdit(false);
+          if (data?.delivery_address !== undefined) {
+            setAddress(data.delivery_address || '');
+            setAddressSaved(true);
+            setAddressDirty(false);
           }
         }
-      } finally {
-        setAddressLoading(false);
-      }
+      } catch { /* noop */ }
     })();
 
     (async () => {
       try {
         const [cat, stp, gst] = await Promise.all([
           fetch(`${API_BASE_URL}/api/v1/categories`, { credentials: 'include' }),
-          fetch(`${API_BASE_URL}/api/v1/stamps`,     { credentials: 'include' }),
-          fetch(`${API_BASE_URL}/api/v1/gosts`,      { credentials: 'include' }),
+          fetch(`${API_BASE_URL}/api/v1/stamps`, { credentials: 'include' }),
+          fetch(`${API_BASE_URL}/api/v1/gosts`, { credentials: 'include' }),
         ]);
-        setInitialOptions({
-          categories: await cat.json(),
-          grades: await stp.json(),
-          standards: await gst.json(),
+        setOpts({
+          categories: (await cat.json()) ?? [],
+          grades: (await stp.json()) ?? [],
+          standards: (await gst.json()) ?? [],
         });
-      } catch {
-      }
+      } catch { /* noop */ }
     })();
   }, []);
 
-  const saveAddress = async () => {
+  // ------- helpers -------
+  const fetchSuggest = async (q: string) => {
+    // кэш по префиксу: ищем самое длинное совпадение
+    const keys = Array.from(addrCache.current.keys()).sort((a,b)=>b.length-a.length);
+    const cachedKey = keys.find(k => q.startsWith(k));
+    if (cachedKey) {
+      const cached = addrCache.current.get(cachedKey)!;
+      // фильтруем под текущий запрос
+      const f = cached.filter(s => (s.unrestricted_value || s.value).toLowerCase().includes(q.toLowerCase()));
+      if (f.length) return f;
+    }
+
+    addrAbort.current?.abort();
+    addrAbort.current = new AbortController();
+    setAddrLoading(true);
     try {
-      setAddressLoading(true);
-      const r = await fetch(`${API_BASE_URL}/api/v1/users/me/address`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ delivery_address: address }),
-      });
-      if (!r.ok) throw new Error('Не удалось сохранить адрес');
-      setAddressEdit(false);
-    } catch (e: any) {
-      alert(e.message || 'Ошибка сохранения адреса');
+      const url = `${API_BASE_URL}/api/v1/suggest/address?q=${encodeURIComponent(q)}&count=7`;
+      const r = await fetch(url, { credentials: 'include', signal: addrAbort.current.signal, keepalive: true as any });
+      const data = await r.json();
+      const list: DaDataAddr[] = (data?.suggestions ?? []).map((s:any)=>({ value: s.value, unrestricted_value: s.unrestricted_value }));
+      addrCache.current.set(q, list);
+      return list;
+    } catch {
+      return [] as DaDataAddr[];
     } finally {
-      setAddressLoading(false);
+      setAddrLoading(false);
     }
   };
 
-  const addGroup = () =>
-    setGroups((g) => [...g, { id: crypto.randomUUID(), title: '', editingTitle: true, items: [] }]);
+  // ------- Address suggestions via backend (debounce 100ms + cancel + cache + prefetch on focus) -------
+  useEffect(() => {
+    const q = addrQuery.trim();
+    if (!addrFocus || q.length < 3) { if (!addrFocus) setAddrSugg([]); return; }
 
-  const saveGroupTitle = (id: string, title: string) =>
-    setGroups((gs) => gs.map((g) => (g.id === id ? { ...g, title, editingTitle: false } : g)));
+    const t = setTimeout(async () => {
+      const list = await fetchSuggest(q);
+      setAddrSugg(list);
+    }, 100);
+    return () => clearTimeout(t);
+  }, [addrQuery, addrFocus]);
 
-  const editGroupTitle = (id: string) =>
-    setGroups((gs) => gs.map((g) => (g.id === id ? { ...g, editingTitle: true } : g)));
-
-  const removeGroup = (id: string) =>
-    setGroups((gs) => gs.filter((g) => g.id !== id));
-
-  const addItemToGroup = (gid: string, kind: 'metal' | 'generic') =>
-    setGroups((gs) =>
-      gs.map((g) =>
-        g.id === gid
-          ? {
-              ...g,
-              items: [
-                ...g.items,
-                kind === 'metal'
-                  ? ({ kind: 'metal', _editing: true } as MetalItemSaved)
-                  : ({ kind: 'generic', _editing: true } as GenericItemSaved),
-              ],
-            }
-          : g
-      )
-    );
-
-  const saveItemInGroup = (gid: string, idx: number, payload: MetalItemSaved | GenericItemSaved) =>
-    setGroups((gs) =>
-      gs.map((g) =>
-        g.id === gid
-          ? { ...g, items: g.items.map((it, i) => (i === idx ? payload : it)) }
-          : g
-      )
-    );
-
-  const editItemInGroup = (gid: string, idx: number) =>
-    setGroups((gs) =>
-      gs.map((g) =>
-        g.id === gid
-          ? { ...g, items: g.items.map((it, i) => (i === idx ? { ...it, _editing: true } : it)) }
-          : g
-      )
-    );
-
-  const removeItemInGroup = (gid: string, idx: number) =>
-    setGroups((gs) =>
-      gs.map((g) =>
-        g.id === gid
-          ? { ...g, items: g.items.filter((_, i) => i !== idx) }
-          : g
-      )
-    );
-
-  const submitAll = async () => {
-    // соберём все сохранённые товары из всех групп
-    const toSend: RequestItemPayload[] = [];
-    for (const g of groups) {
-      for (const it of g.items) {
-        if (it._editing) continue;
-        if (it.kind === 'metal') {
-          toSend.push({
-            kind: 'metal',
-            category: it.category,
-            state_standard: it.state_standard ?? null,
-            stamp: it.stamp ?? null,
-            diameter: it.diameter ?? null,
-            thickness: it.thickness ?? null,
-            length: it.length ?? null,
-            width: it.width ?? null,
-            quantity: it.quantity ?? null,
-            allow_analogs: it.allow_analogs ?? false,
-            comment: it.comment ?? null,
-          });
-        } else {
-          toSend.push({
-            kind: 'generic',
-            category: g.title || 'Прочее',
-            name: (it as GenericItemSaved).name || '',
-            note: (it as GenericItemSaved).note || '',
-            quantity: (it as GenericItemSaved).quantity ?? null,
-            comment: (it as GenericItemSaved).comment || '',
-          });
-        }
+  // prefetch на фокусе, если текст уже есть
+  useEffect(() => {
+    if (addrFocus) {
+      const q = (address || '').trim();
+      if (q.length >= 3) {
+        fetchSuggest(q).then(setAddrSugg);
       }
     }
+  }, [addrFocus]);
 
-    if (!toSend.length) {
-      alert('Добавьте и сохраните хотя бы один товар в любой категории');
-      return;
+  // ------- Auto-save address on selection / explicit save / blur if changed -------
+  const persistAddress = async (value: string) => {
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/v1/users/me/address`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ delivery_address: value }),
+      });
+      if (r.ok) {
+        setAddressSaved(true);
+        setAddressDirty(false);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const onPickAddress = (val: string) => {
+    setAddress(val);
+    setAddrQuery('');
+    setAddrSugg([]);
+    setAddressSaved(false);
+    setAddressDirty(true);
+    // моментально сохраняем выбранный вариант
+    persistAddress(val);
+  };
+
+  const onBlurAddress = () => {
+    setAddrFocus(false);
+    if (addressDirty && address && !addrSugg.length) {
+      persistAddress(address);
     }
+  };
 
+  const onSaveAddressClick = async () => {
+    await persistAddress(address);
+  };
+
+  const clearAddress = async () => {
+    setAddress('');
+    setAddrQuery('');
+    setAddrSugg([]);
+    setAddressSaved(false);
+    setAddressDirty(true);
+    await persistAddress('');
+  };
+
+  // ------- Category helpers -------
+  const addCategory = () =>
+    setCats(cs => [
+      ...cs,
+      { id: crypto.randomUUID(), title: '', kind: 'generic', editors: [], saved: [], editingTitle: true }
+    ]);
+
+  const finalizeCategoryTitle = (cid: string, title: string) => {
+    setCats(cs => cs.map(c => {
+      if (c.id !== cid) return c;
+      const normalized = title.trim().toLowerCase();
+      const nextKind: RowKind = normalized === 'металлопрокат' ? 'metal' : 'generic';
+      return { ...c, title, kind: nextKind, editingTitle: false, editors: [] };
+    }));
+  };
+
+  const reopenCategoryTitle = (cid: string) =>
+    setCats(cs => cs.map(c => c.id === cid ? { ...c, editingTitle: true } : c));
+
+  const addPosition = (cid: string) =>
+    setCats(cs => cs.map(c => c.id === cid ? { ...c, editors: [...c.editors, blankRow(c.kind)] } : c));
+
+  const setCell = (cid: string, rid: string, key: string, val: any) =>
+    setCats(cs => cs.map(c => {
+      if (c.id !== cid) return c;
+      return { ...c, editors: c.editors.map(r => r._id === rid ? ({ ...r, [key]: val }) as Row : r) };
+    }));
+
+  const removeEditorRow = (cid: string, rid: string) =>
+    setCats(cs => cs.map(c => c.id === cid ? { ...c, editors: c.editors.filter(r => r._id !== rid) } : c));
+
+  function blankRow(kind: RowKind): Row {
+    return kind === 'metal'
+      ? ({ _id: crypto.randomUUID(), kind: 'metal' } as MetalRow)
+      : ({ _id: crypto.randomUUID(), kind: 'generic' } as GenericRow);
+  }
+
+  // ------- Save single position into category.saved (and hide editor row) -------
+  const savePosition = (cid: string, rid: string) =>
+    setCats(cs => cs.map(c => {
+      if (c.id !== cid) return c;
+      const row = c.editors.find(r => r._id === rid);
+      if (!row) return c;
+      let item: SavedItem | null = null;
+
+      if (c.kind === 'metal') {
+        const m = row as MetalRow;
+        if (!m.mCategory || !m.qty) { alert('Для металлопроката укажите Категорию и Количество'); return c; }
+        item = {
+          kind: 'metal',
+          category: m.mCategory || null,
+          size: m.size || null,
+          state_standard: m.gost || null,
+          stamp: m.grade || null,
+          quantity: m.qty ? Number(m.qty) : null,
+          allow_analogs: !!m.allowAnalogs,
+          comment: m.comment || null,
+        };
+      } else {
+        const g = row as GenericRow;
+        if (!g.name || !g.qty) { alert('Для прочей позиции укажите Наименование и Количество'); return c; }
+        item = {
+          kind: 'generic',
+          category: c.title?.trim() || 'Прочее', // пользовательская категория
+          name: g.name || '',
+          dims: g.dims || null,
+          uom: g.uom || null,
+          quantity: g.qty ? Number(g.qty) : null,
+          comment: g.comment || '',
+        };
+      }
+
+      return {
+        ...c,
+        saved: [...c.saved, item!],
+        editors: c.editors.filter(r => r._id !== rid)
+      };
+    }));
+
+  // ------- Whole request save -------
+  const allSavedItems = useMemo(() => cats.flatMap(c => c.saved), [cats]);
+
+  const saveRequest = async () => {
+    if (!allSavedItems.length) { alert('Добавьте и сохраните хотя бы одну позицию'); return; }
     try {
       const r = await fetch(`${API_BASE_URL}/api/v1/requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ items: toSend }),
+        body: JSON.stringify({
+          items: allSavedItems,
+          comment: title?.trim() || undefined,
+          delivery_at: deliveryAt || null,
+          delivery_address: address || null,
+        }),
       });
-      if (!r.ok) {
-        const er = await r.json().catch(() => ({}));
-        throw new Error(er.detail || 'Не удалось сохранить заявку');
-      }
+      if (!r.ok) throw new Error('Не удалось сохранить заявку');
       alert('Заявка сохранена');
-      setGroups([{ id: crypto.randomUUID(), title: '', editingTitle: true, items: [] }]);
-    } catch (e: any) {
-      alert(e.message || 'Ошибка отправки заявки');
+      setCats([]);
+    } catch (e:any) {
+      alert(e.message || 'Ошибка сохранения');
     }
   };
+  const sendRequest = async () => { await saveRequest(); };
 
-  const resetAll = () => {
-    setGroups([{ id: crypto.randomUUID(), title: '', editingTitle: true, items: [] }]);
-  };
-
-  const isMetal = (title: string) => title.trim().toLowerCase() === 'металл';
-
+  // ---------------- Render ----------------
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-yellow-100 flex flex-col">
       <Header />
 
       <main className="flex-grow">
-        <div className="container mx-auto px-4 py-8">
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold text-gray-800">Новая заявка</h1>
-            <p className="text-gray-600 mt-1">Создайте категории и добавьте товары</p>
-          </div>
+        <div className="container mx-auto px-4 py-8 space-y-6">
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-6">
-              {groups.map((g, gi) => (
-                <div key={g.id} className={clsCard}>
-                  <div className="flex items-center justify-between">
-                    {g.editingTitle ? (
-                      <div className="flex-1">
-                        <label className={clsLabel}>Название категории</label>
-                        <div className="flex gap-3">
-                          <input
-                            className={clsInput}
-                            placeholder='Например: "Металл", "Дерево", "Кроссовки"'
-                            value={g.title}
-                            onChange={(e) =>
-                              setGroups((gs) =>
-                                gs.map((x) => (x.id === g.id ? { ...x, title: e.target.value } : x))
-                              )
-                            }
-                          />
+          {/* ---- Шапка заявки ---- */}
+          <div className="bg-white rounded-xl shadow p-5">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Название заявки</label>
+                <input className={clsInput} value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="Например: Поставка на объект А" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Дата и время поставки</label>
+                <input type="datetime-local" className={clsInput} value={deliveryAt} onChange={(e)=>setDeliveryAt(e.target.value)} />
+              </div>
+
+              {/* Адрес с подсказками (выпадает ТОЛЬКО при фокусе) */}
+              <div className="lg:col-span-2 relative">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Адрес поставки</label>
+                <div className="flex gap-2 items-center">
+                  <div className="relative flex-1">
+                    <input
+                      className={clsInput + ' w-full'}
+                      value={address}
+                      onFocus={()=>{ setAddrFocus(true); setAddrQuery(address); }}
+                      onBlur={onBlurAddress}
+                      onChange={(e)=>{ setAddress(e.target.value); setAddrQuery(e.target.value); setAddressSaved(false); setAddressDirty(true); }}
+                      placeholder="Начните вводить адрес..."
+                    />
+                    {addrFocus && addrSugg.length > 0 && (
+                      <div className="absolute z-20 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
+                        {addrSugg.map((s, i) => (
                           <button
                             type="button"
-                            onClick={() => saveGroupTitle(g.id, g.title.trim())}
-                            disabled={!g.title.trim()}
-                            className="bg-amber-600 text-white px-4 rounded-md hover:bg-amber-700 disabled:opacity-50"
+                            key={i}
+                            onMouseDown={()=> onPickAddress(s.unrestricted_value || s.value)}
+                            className="block w-full text-left px-3 py-2 hover:bg-amber-50"
                           >
-                            Сохранить
+                            {s.unrestricted_value || s.value}
                           </button>
-                        </div>
+                        ))}
                       </div>
-                    ) : (
-                      <>
-                        <h2 className="text-xl font-semibold">
-                          Категория: <span className="text-gray-800">{g.title || '—'}</span>
-                        </h2>
-                        <div className="flex gap-3">
-                          <button
-                            type="button"
-                            onClick={() => editGroupTitle(g.id)}
-                            className="text-amber-700 hover:underline"
-                          >
-                            Изменить
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeGroup(g.id)}
-                            className="text-red-600 hover:underline"
-                          >
-                            Удалить
-                          </button>
-                        </div>
-                      </>
                     )}
                   </div>
-                  {!g.editingTitle && (
-                    <div className="mt-5 space-y-5">
-                      {g.items.map((it, idx) => (
-                        <div key={idx} className="rounded-lg border border-gray-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="text-sm text-gray-500">Товар #{idx + 1}</div>
-                            {!it._editing && (
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => editItemInGroup(g.id, idx)}
-                                  className="text-amber-700 hover:underline"
-                                >
-                                  Изменить
-                                </button>
-                                <button
-                                  onClick={() => removeItemInGroup(g.id, idx)}
-                                  className="text-red-600 hover:underline"
-                                >
-                                  Удалить
-                                </button>
-                              </div>
-                            )}
-                          </div>
 
-                          {it._editing ? (
-                            isMetal(g.title) ? (
-                              <MetalEditor
-                                initial={it.kind === 'metal' ? it : undefined}
-                                initialOptions={initialOptions}
-                                onSave={(payload) => saveItemInGroup(g.id, idx, payload)}
-                                onCancel={() => removeItemInGroup(g.id, idx)}
-                              />
-                            ) : (
-                              <GenericEditor
-                                initial={it.kind === 'generic' ? it : undefined}
-                                onSave={(payload) => saveItemInGroup(g.id, idx, payload)}
-                                onCancel={() => removeItemInGroup(g.id, idx)}
-                              />
-                            )
-                          ) : (
-                            <>
-                              {it.kind === 'metal' ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm text-gray-800">
-                                  <div><span className="text-gray-500">Категория: </span>{it.category || '—'}</div>
-                                  <div><span className="text-gray-500">ГОСТ/ТУ: </span>{it.state_standard || '—'}</div>
-                                  <div><span className="text-gray-500">Марка: </span>{it.stamp || '—'}</div>
-                                  <div><span className="text-gray-500">Диаметр: </span>{it.diameter ?? '—'}</div>
-                                  <div><span className="text-gray-500">Толщина: </span>{it.thickness ?? '—'}</div>
-                                  <div><span className="text-gray-500">Длина: </span>{it.length ?? '—'}</div>
-                                  <div><span className="text-gray-500">Ширина: </span>{it.width ?? '—'}</div>
-                                  <div><span className="text-gray-500">Количество: </span>{it.quantity ?? '—'}</div>
-                                  <div><span className="text-gray-500">Аналоги: </span>{it.allow_analogs ? 'да' : 'нет'}</div>
-                                  <div className="md:col-span-2 lg:col-span-3">
-                                    <span className="text-gray-500">Комментарий: </span>{it.comment || '—'}
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm text-gray-800">
-                                  <div className="md:col-span-2"><span className="text-gray-500">Наименование: </span>{(it as GenericItemSaved).name || '—'}</div>
-                                  <div><span className="text-gray-500">Количество: </span>{(it as GenericItemSaved).quantity ?? '—'}</div>
-                                  <div className="md:col-span-2"><span className="text-gray-500">Примечание: </span>{(it as GenericItemSaved).note || '—'}</div>
-                                  <div className="md:col-span-3"><span className="text-gray-500">Комментарий: </span>{(it as GenericItemSaved).comment || '—'}</div>
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      ))}
-                      <div className="flex flex-wrap gap-3">
-                        <button
-                          type="button"
-                          onClick={() => addItemToGroup(g.id, isMetal(g.title) ? 'metal' : 'generic')}
-                          className="border border-amber-600 text-amber-700 px-4 py-2 rounded-md hover:bg-amber-50"
-                        >
-                          Добавить товар
-                        </button>
-                      </div>
-                    </div>
+                  {/* Кнопка: если адрес редактировался — Сохранить, иначе (и адрес есть) — Очистить */}
+                  {addressDirty ? (
+                    <button type="button" onClick={onSaveAddressClick} className="px-3 py-2 bg-amber-600 text-white rounded-md">
+                      Сохранить
+                    </button>
+                  ) : (
+                    address ? (
+                      <button type="button" onClick={clearAddress} className="px-3 py-2 border border-gray-300 rounded-md">
+                        Очистить
+                      </button>
+                    ) : null
+                  )}
+
+                  {/* Спиннер загрузки подсказок */}
+                  {addrLoading && (
+                    <div className="text-xs text-gray-500">Загрузка…</div>
                   )}
                 </div>
-              ))}
-
-              <button
-                type="button"
-                onClick={addGroup}
-                className="border border-dashed border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50"
-              >
-                + Добавить категорию
-              </button>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={submitAll}
-                  className="bg-amber-600 text-white px-6 py-2 rounded-md hover:bg-amber-700"
-                >
-                  Сохранить заявку
-                </button>
-                <button
-                  type="button"
-                  onClick={resetAll}
-                  className="border border-gray-300 text-gray-700 px-6 py-2 rounded-md hover:bg-gray-50"
-                >
-                  Сбросить всё
-                </button>
               </div>
             </div>
 
-            {/* Правая колонка — адрес доставки */}
-            <aside className="space-y-4">
-              <div className={clsCard}>
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg font-medium">Адрес доставки</h2>
-                  {!addressEdit && (
-                    <button onClick={() => setAddressEdit(true)} className="text-amber-700 hover:underline">
-                      Изменить
-                    </button>
-                  )}
-                </div>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button type="button" onClick={saveRequest} className={`bg-amber-600 text-white ${clsBtn}`}>Сохранить</button>
+              <button type="button" onClick={sendRequest} className={`border border-amber-600 text-amber-700 ${clsBtn}`}>Разослать</button>
+            </div>
+          </div>
 
-                {addressEdit ? (
-                  <>
+          {/* ---- Категории и позиции ---- */}
+          {cats.map(cat => (
+            <div key={cat.id} className="bg-white rounded-xl shadow p-5 space-y-4">
+              {/* Заголовок категории: сначала ввод, потом жирный текст + кнопка Изменить */}
+              {cat.editingTitle ? (
+                <div className="flex items-center gap-3">
+                  <div className="relative w-80">
                     <input
-                      className={clsInput}
-                      placeholder="Например: г. Екатеринбург, ул. …, склад №…"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
+                      className="px-2 py-1 border border-gray-300 rounded-md text-sm w-full"
+                      value={cat.title}
+                      placeholder="Категория (например, Металлопрокат)"
+                      onFocus={()=> setCatFocus(p=>({ ...p, [cat.id]: true }))}
+                      onBlur={()=> setTimeout(()=> setCatFocus(p=>({ ...p, [cat.id]: false })), 120)}
+                      onChange={(e)=> setCats(cs => cs.map(c => c.id===cat.id ? { ...c, title: e.target.value } : c))}
+                      onKeyDown={(e)=>{ if (e.key === 'Enter') finalizeCategoryTitle(cat.id, cat.title); }}
                     />
-                    <button
-                      type="button"
-                      onClick={saveAddress}
-                      disabled={addressLoading || !address}
-                      className="mt-3 bg-amber-600 text-white px-4 py-2 rounded-md hover:bg-amber-700 disabled:opacity-50"
-                    >
-                      {addressLoading ? 'Сохраняем…' : 'Сохранить адрес'}
+                    {catFocus[cat.id] && (
+                      <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow">
+                        <button
+                          type="button"
+                          onMouseDown={()=> finalizeCategoryTitle(cat.id, 'Металлопрокат')}
+                          className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm"
+                        >
+                          Металлопрокат
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <button className="px-3 py-1 bg-emerald-600 text-white rounded-md text-sm" onClick={()=>finalizeCategoryTitle(cat.id, cat.title)}>
+                    Применить
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="text-lg font-semibold">
+                    {cat.title?.trim() || (cat.kind === 'metal' ? 'Металлопрокат' : 'Новая категория')}
+                  </div>
+                  <button className="px-3 py-1 border border-gray-300 rounded-md text-sm" onClick={()=>reopenCategoryTitle(cat.id)}>
+                    Изменить
+                  </button>
+                </div>
+              )}
+
+              {/* Пока категория не задана — никаких полей ниже */}
+              {!cat.editingTitle && (
+                <>
+                  {/* Если есть сохранённые позиции — показываем таблицу */}
+                  {cat.saved.length > 0 && (
+                    <div className="space-y-2">
+                      {cat.kind === 'metal' ? (
+                        <table className="w-full table-auto border-separate border-spacing-0">
+                          <thead>
+                            <tr className="bg-gray-50">
+                              <th className={th}>Категория</th>
+                              <th className={th}>Размер</th>
+                              <th className={th}>ГОСТ</th>
+                              <th className={th}>Марка</th>
+                              <th className={th}>Аналоги</th>
+                              <th className={th}>Количество</th>
+                              <th className={th}>Комментарий</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cat.saved.map((s, i) => {
+                              if (s.kind !== 'metal') return null;
+                              const m = s as SavedMetalItem;
+                              return (
+                                <tr key={i} className="border-t">
+                                  <td className={td}>{m.category || '—'}</td>
+                                  <td className={td}>{m.size || '—'}</td>
+                                  <td className={td}>{m.state_standard || '—'}</td>
+                                  <td className={td}>{m.stamp || '—'}</td>
+                                  <td className={td}>{m.allow_analogs ? 'Да' : 'Нет'}</td>
+                                  <td className={td}>{m.quantity ?? '—'}</td>
+                                  <td className={td}>{m.comment || '—'}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <table className="w-full table-auto border-separate border-spacing-0">
+                          <thead>
+                            <tr className="bg-gray-50">
+                              <th className={th}>Наименование</th>
+                              <th className={th}>Размеры/характеристики</th>
+                              <th className={th}>Ед. изм.</th>
+                              <th className={th}>Количество</th>
+                              <th className={th}>Комментарий</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cat.saved.map((s, i) => {
+                              if (s.kind !== 'generic') return null;
+                              const g = s as SavedGenericItem;
+                              return (
+                                <tr key={i} className="border-t">
+                                  <td className={td}>{g.name}</td>
+                                  <td className={td}>{g.dims || '—'}</td>
+                                  <td className={td}>{g.uom || '—'}</td>
+                                  <td className={td}>{g.quantity ?? '—'}</td>
+                                  <td className={td}>{g.comment || '—'}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Несохранённые редакторы позиций (кнопки под позицией) */}
+                  {cat.editors.map(row => (
+                    <div key={row._id} className="rounded-lg border border-gray-200 p-4">
+                      {cat.kind === 'metal' ? (
+                        <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Категория (лист, труба)</div>
+                            <select className={clsInput}
+                              value={(row as MetalRow).mCategory || ''}
+                              onChange={(e)=>setCell(cat.id, row._id, 'mCategory', e.target.value)}
+                            >
+                              <option value="">—</option>
+                              {opts.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Размер (1×1×1)</div>
+                            <input className={clsInput} placeholder="1x1x1"
+                              value={(row as MetalRow).size || ''}
+                              onChange={(e)=>setCell(cat.id, row._id, 'size', e.target.value)} />
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">ГОСТ</div>
+                            <select className={clsInput}
+                              value={(row as MetalRow).gost || ''}
+                              onChange={(e)=>setCell(cat.id, row._id, 'gost', e.target.value)}
+                            >
+                              <option value="">—</option>
+                              {opts.standards.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Марка</div>
+                            <select className={clsInput}
+                              value={(row as MetalRow).grade || ''}
+                              onChange={(e)=>setCell(cat.id, row._id, 'grade', e.target.value)}
+                            >
+                              <option value="">—</option>
+                              {opts.grades.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Аналоги</div>
+                            <select className={clsInput}
+                              value={(row as MetalRow).allowAnalogs ? 'Да' : 'Нет'}
+                              onChange={(e)=>setCell(cat.id, row._id,'allowAnalogs', e.target.value === 'Да')}
+                            >
+                              <option>Нет</option>
+                              <option>Да</option>
+                            </select>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Количество</div>
+                            <input className={clsInput} type="number" min="0" step="any"
+                              value={(row as MetalRow).qty || ''}
+                              onChange={(e)=>setCell(cat.id, row._id, 'qty', e.target.value)} />
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Комментарий</div>
+                            <input className={clsInput}
+                              value={(row as MetalRow).comment || ''}
+                              onChange={(e)=>setCell(cat.id, row._id, 'comment', e.target.value)} />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                          <div className="md:col-span-2">
+                            <div className="text-xs text-gray-600 mb-1">Наименование товаров / работ / услуг</div>
+                            <input className={clsInput}
+                              value={(row as GenericRow).name || ''}
+                              onChange={(e)=>setCell(cat.id, row._id, 'name', e.target.value)} />
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Размеры, характеристики</div>
+                            <input className={clsInput}
+                              value={(row as GenericRow).dims || ''}
+                              onChange={(e)=>setCell(cat.id, row._id, 'dims', e.target.value)} />
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Ед. изм.</div>
+                            <input className={clsInput}
+                              value={(row as GenericRow).uom || ''}
+                              onChange={(e)=>setCell(cat.id, row._id, 'uom', e.target.value)} />
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Количество</div>
+                            <input className={clsInput} type="number" min="0" step="any"
+                              value={(row as GenericRow).qty || ''}
+                              onChange={(e)=>setCell(cat.id, row._id, 'qty', e.target.value)} />
+                          </div>
+                          <div className="md:col-span-5">
+                            <div className="text-xs text-gray-600 mb-1">Комментарий</div>
+                            <input className={clsInput}
+                              value={(row as GenericRow).comment || ''}
+                              onChange={(e)=>setCell(cat.id, row._id, 'comment', e.target.value)} />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Кнопки под позицией */}
+                      <div className="mt-3 flex flex-wrap gap-3">
+                        <button onClick={()=>savePosition(cat.id, row._id)} className="px-4 py-2 bg-emerald-600 text-white rounded-md">Сохранить</button>
+                        <button onClick={()=>removeEditorRow(cat.id, row._id)} className="px-4 py-2 border border-gray-300 rounded-md">Удалить</button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Кнопка добавить позицию — снизу блока категории */}
+                  <div>
+                    <button onClick={()=>addPosition(cat.id)} className="px-4 py-2 border border-dashed border-gray-300 rounded-md">
+                      + Добавить позицию
                     </button>
-                  </>
-                ) : (
-                  <p className="text-gray-800">{address || 'Адрес не указан'}</p>
-                )}
-              </div>
-            </aside>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+
+          {/* Кнопка добавить категорию — слева */}
+          <div className="flex justify-start">
+            <button
+              type="button"
+              onClick={addCategory}
+              className="px-5 py-3 border border-dashed border-gray-400 rounded-md text-gray-700 bg-white shadow-sm"
+            >
+              + Добавить категорию
+            </button>
           </div>
         </div>
       </main>

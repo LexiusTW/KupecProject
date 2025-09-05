@@ -1,46 +1,61 @@
+from collections import defaultdict
+from typing import Any, Dict, List, Tuple, Union
+
 from fastapi import WebSocket
-from typing import Dict, List
-import json
-import logging
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
+from app.models.crm import ChatParticipant
 
+Payload = Union[str, Dict[str, Any]]
 
 class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[int, List[WebSocket]] = {}
-    
-    async def connect(self, websocket: WebSocket, user_id: int):
+    def __init__(self) -> None:
+        # ключ: (role, user_id)  -> список WebSocket
+        self.active: Dict[Tuple[str, int], List[WebSocket]] = defaultdict(list)
+
+    async def connect(self, websocket: WebSocket, role: str, user_id: int) -> None:
         await websocket.accept()
-        if user_id not in self.active_connections:
-            self.active_connections[user_id] = []
-        self.active_connections[user_id].append(websocket)
-        logger.info(f"Пользователь {user_id} подключился к WebSocket")
-    
-    def disconnect(self, websocket: WebSocket, user_id: int):
-        if user_id in self.active_connections:
-            self.active_connections[user_id].remove(websocket)
-            if not self.active_connections[user_id]:
-                del self.active_connections[user_id]
-        logger.info(f"Пользователь {user_id} отключился от WebSocket")
-    
-    async def send_personal_message(self, message: str, user_id: int):
-        if user_id in self.active_connections:
-            for connection in self.active_connections[user_id]:
+        self.active[(role, user_id)].append(websocket)
+
+    async def disconnect(self, websocket: WebSocket, role: str, user_id: int) -> None:
+        key = (role, user_id)
+        lst = self.active.get(key, [])
+        if websocket in lst:
+            lst.remove(websocket)
+        if not lst and key in self.active:
+            self.active.pop(key, None)
+
+    async def send_personal_message(self, payload: Payload, role: str, user_id: int) -> None:
+        key = (role, user_id)
+        sockets = list(self.active.get(key, []))  # итерация по копии
+        for ws in sockets:
+            try:
+                if isinstance(payload, (dict, list)):
+                    await ws.send_json(payload)
+                else:
+                    await ws.send_text(str(payload))
+            except Exception:
+                # чистим «плохое» соединение
                 try:
-                    await connection.send_text(message)
-                except Exception as e:
-                    logger.error(f"Ошибка отправки сообщения пользователю {user_id}: {e}")
-                    self.active_connections[user_id].remove(connection)
-    
-    async def broadcast_to_chat(self, message: str, chat_id: int, db):
-        """Отправляет сообщение всем участникам чата"""
-        from app.models.user import ChatParticipant
-        
-        chat_participants = db.query(ChatParticipant).filter(ChatParticipant.chat_id == chat_id).all()
-        for participant in chat_participants:
-            await self.send_personal_message(message, participant.user_id)
+                    await ws.close()
+                except Exception:
+                    pass
+                if ws in self.active.get(key, []):
+                    self.active[key].remove(ws)
+        if key in self.active and not self.active[key]:
+            self.active.pop(key, None)
 
+    async def broadcast_to_chat(self, payload: Payload, chat_id: int, db: AsyncSession) -> None:
+        rows = (await db.execute(
+            select(ChatParticipant.buyer_id, ChatParticipant.seller_id)
+            .where(ChatParticipant.chat_id == chat_id)
+        )).all()
+        for buyer_id, seller_id in rows:
+            if buyer_id:
+                await self.send_personal_message(payload, "buyer", buyer_id)
+            if seller_id:
+                await self.send_personal_message(payload, "seller", seller_id)
 
-# Глобальный экземпляр менеджера
+# единый экземпляр
 manager = ConnectionManager()
