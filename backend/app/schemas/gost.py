@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class SteelGradeBase(BaseModel):
@@ -11,8 +11,8 @@ class SteelGradeBase(BaseModel):
 class SteelGradeOut(SteelGradeBase):
     id: int
 
-    class Config:
-        from_attributes = True
+    class SomeSchema(BaseModel):
+        model_config = ConfigDict(from_attributes=True)
 
 
 class GostBase(BaseModel):
@@ -25,8 +25,8 @@ class GostOut(GostBase):
     id: int
     grades: List[SteelGradeOut] = []
 
-    class Config:
-        from_attributes = True
+    class SomeSchema(BaseModel):
+        model_config = ConfigDict(from_attributes=True)
 
 
 class GostListItem(BaseModel):
@@ -34,8 +34,8 @@ class GostListItem(BaseModel):
     code: str
     name: str
 
-    class Config:
-        from_attributes = True
+    class SomeSchema(BaseModel):
+        model_config = ConfigDict(from_attributes=True)
 
 
 class SteelGradeWithGosts(SteelGradeOut):

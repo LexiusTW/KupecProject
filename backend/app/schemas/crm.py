@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Literal, Optional
 from datetime import datetime
 
@@ -13,7 +13,9 @@ class ChatCreate(BaseModel):
 class ChatOut(BaseModel):
     id: int
     is_active: bool
-    class Config: from_attributes = True
+    
+    class SomeSchema(BaseModel):
+        model_config = ConfigDict(from_attributes=True)
 
 class ChatMessageIn(BaseModel):
     content: str
@@ -25,7 +27,9 @@ class ChatMessageOut(BaseModel):
     sent_at: Optional[datetime] = None
     sender_id: int
     sender_role: Role
-    class Config: from_attributes = True
+    
+    class SomeSchema(BaseModel):
+        model_config = ConfigDict(from_attributes=True)
 
 class EmailCreate(BaseModel):
     subject: str
@@ -37,4 +41,6 @@ class EmailOut(BaseModel):
     id: int
     subject: str
     content: str
-    class Config: from_attributes = True
+    
+    class SomeSchema(BaseModel):
+        model_config = ConfigDict(from_attributes=True)

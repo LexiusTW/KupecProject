@@ -7,11 +7,14 @@ class Request(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     buyer_id = Column(Integer, ForeignKey("buyers.id"), nullable=False)
+    counterparty_id = Column(Integer, ForeignKey("counterparties.id"), nullable=True)
     delivery_address = Column(String, nullable=True)
     comment = Column(String, nullable=True)
+    delivery_at = Column(DateTime(timezone=True), nullable=True) # Дата и время поставки
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     items = relationship("RequestItem", back_populates="request", cascade="all, delete-orphan")
+    counterparty = relationship("Counterparty")
 
 class RequestItem(Base):
     __tablename__ = "request_items"

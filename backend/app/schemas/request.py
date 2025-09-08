@@ -40,14 +40,26 @@ class RequestItemCreate(RequestItemBase):
 class RequestCreate(BaseModel):
     items: List[RequestItemCreate]
     comment: Optional[str] = None
+    delivery_at: Optional[datetime] = None
     delivery_address: Optional[str] = None  # если фронт когда-то пришлёт адрес прямо тут
+    counterparty_id: Optional[int] = None   # ID контрагента
     model_config = {"from_attributes": True}
 
 class RequestItemOut(RequestItemBase):
     id: int
     model_config = {"from_attributes": True}
 
+class CounterpartyInRequest(BaseModel):
+    id: int
+    short_name: str
+    model_config = {"from_attributes": True}
+
 class RequestOut(BaseModel):
     id: int
-    # можно расширить при необходимости
+    comment: Optional[str] = None
+    delivery_address: Optional[str] = None
+    delivery_at: Optional[datetime] = None
+    created_at: datetime
+    items: List[RequestItemOut]
+    counterparty: Optional[CounterpartyInRequest] = None
     model_config = {"from_attributes": True}

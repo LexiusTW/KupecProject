@@ -1,5 +1,5 @@
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 class SearchResultItem(BaseModel):
     id: int
@@ -16,8 +16,8 @@ class SearchResultItem(BaseModel):
     supplier: Optional[str]
     material: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    class SomeSchema(BaseModel):
+        model_config = ConfigDict(from_attributes=True)
 
 class SearchResult(BaseModel):
     items: List[SearchResultItem]

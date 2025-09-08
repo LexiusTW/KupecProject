@@ -3,12 +3,12 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.api.deps import get_db, get_current_user
 from app.models.user import Buyer, Seller
 from app.models.request import Request, RequestItem
-from app.schemas.request import RequestCreate, RequestOut, RequestItemCreate
+from app.schemas.request import RequestCreate, RequestOut, RequestItemCreate, RequestItemOut
 
 router = APIRouter()
 
@@ -26,53 +26,22 @@ def _infer_kind(it: RequestItemCreate) -> str:
     ])
     return "metal" if metal_signals else "generic"
 
-@router.get("/requests/me")
+@router.get("/requests/me", response_model=List[RequestOut])
 async def list_my_requests(
     db: AsyncSession = Depends(get_db),
     user = Depends(get_current_user),
 ):
     if isinstance(user, Seller):
         return []
-
+    
     q = (
         select(Request)
         .where(Request.buyer_id == user.id)
-        .options(joinedload(Request.items))
+        .options(selectinload(Request.items), joinedload(Request.counterparty))
         .order_by(Request.created_at.desc())
     )
     rows = (await db.execute(q)).scalars().all()
-
-    result: List[Dict[str, Any]] = []
-    for r in rows:
-        result.append({
-            "id": r.id,
-            "delivery_address": r.delivery_address,
-            "comment": r.comment,
-            "created_at": r.created_at,
-            "items": [
-                {
-                    "id": it.id,
-                    "kind": it.kind,
-                    "category": it.category,
-                    "size": it.size,
-                    "dims": it.dims,
-                    "uom": it.uom,
-                    "stamp": it.stamp,
-                    "state_standard": it.state_standard,
-                    "thickness": it.thickness,
-                    "length": it.length,
-                    "width": it.width,
-                    "diameter": it.diameter,
-                    "allow_analogs": it.allow_analogs,
-                    "name": it.name,
-                    "note": it.note,
-                    "quantity": it.quantity,
-                    "comment": it.comment,
-                }
-                for it in (r.items or [])
-            ],
-        })
-    return result
+    return rows
 
 @router.post("/requests", response_model=RequestOut, status_code=status.HTTP_201_CREATED)
 async def create_request(
@@ -87,6 +56,8 @@ async def create_request(
         buyer_id=user.id,  # id берётся из токена через get_current_user
         delivery_address=delivery_address,
         comment=payload.comment,
+        delivery_at=payload.delivery_at,
+        counterparty_id=payload.counterparty_id,
     )
     db.add(req)
     await db.flush()  # получим req.id
@@ -128,4 +99,5 @@ async def create_request(
         db.add(row)
 
     await db.commit()
-    return {"id": req.id}
+    await db.refresh(req, attribute_names=["items", "counterparty"])
+    return req

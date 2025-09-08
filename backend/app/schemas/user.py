@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, constr
+from pydantic import BaseModel, ConfigDict, constr
 
 
 class Role(str, Enum):
@@ -31,5 +31,5 @@ class UserSchema(BaseModel):
     role: Role
     is_active: bool
 
-    class Config:
-        orm_mode = True
+    class SomeSchema(BaseModel):
+        model_config = ConfigDict(from_attributes=True)

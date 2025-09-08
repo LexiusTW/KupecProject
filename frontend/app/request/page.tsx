@@ -71,10 +71,47 @@ type CategoryBlock = {
   editingTitle: boolean;// управляет показом инпута / жирного заголовка + "Изменить"
 };
 
+type Counterparty = {
+  id: number;
+  short_name: string;
+  legal_address: string;
+  ogrn?: string | null;
+  inn: string;
+  kpp?: string | null;
+  okpo?: string | null;
+  okato?: string | null;
+  bank_account?: string | null;
+  bank_bik?: string | null;
+  bank_name?: string | null;
+  bank_corr?: string | null;
+};
+
+// Для формы создания, все поля опциональны и строковые
+type CounterpartyCreateForm = Partial<Omit<Counterparty, 'id'>>;
+
+// Для ошибок валидации формы
+type CounterpartyFormErrors = { [K in keyof CounterpartyCreateForm]?: string };
+
+type DaDataParty = {
+  value: string;
+  unrestricted_value: string;
+  inn: string;
+  kpp?: string;
+  ogrn?: string;
+  okpo?: string;
+  okato?: string;
+  short_name?: string;
+  full_name?: string;
+  legal_address?: string;
+};
+
+
 type DaDataAddr = { value: string; unrestricted_value?: string };
 
 const clsInput =
   'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500';
+const clsInputError =
+  'w-full px-3 py-2 border border-red-500 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500';
 const clsBtn = 'px-4 py-2 rounded-md';
 const th = 'px-3 py-2 text-left text-xs font-semibold text-gray-600';
 const td = 'px-3 py-2';
@@ -84,6 +121,30 @@ export default function RequestPage() {
   const [title, setTitle] = useState('');
   const [deliveryAt, setDeliveryAt] = useState('');
   const [address, setAddress] = useState('');
+
+  // ---------------- Counterparty fields ----------------
+  const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
+  const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
+  const [showCpCreateModal, setShowCpCreateModal] = useState(false);
+  const [newCpForm, setNewCpForm] = useState<CounterpartyCreateForm>({});
+  const [cpSearchQuery, setCpSearchQuery] = useState('');
+  const [cpSuggestions, setCpSuggestions] = useState<Counterparty[]>([]);
+  const [cpFocus, setCpFocus] = useState(false);
+  const [cpFormErrors, setCpFormErrors] = useState<CounterpartyFormErrors>({});
+  const [cpSearchError, setCpSearchError] = useState('');
+  // Состояния для подсказок юр. адреса в модальном окне
+  const [cpAddrQuery, setCpAddrQuery] = useState('');
+  const [cpAddrSugg, setCpAddrSugg] = useState<DaDataAddr[]>([]);
+  const [cpAddrFocus, setCpAddrFocus] = useState(false);
+  const [cpAddrLoading, setCpAddrLoading] = useState(false);
+  const cpAddrAbort = useRef<AbortController | null>(null);
+  // Состояния для поиска контрагента в DaData
+  const [cpDadataQuery, setCpDadataQuery] = useState('');
+  const [cpDadataSugg, setCpDadataSugg] = useState<DaDataParty[]>([]);
+  const [cpDadataFocus, setCpDadataFocus] = useState(false);
+  const [cpDadataLoading, setCpDadataLoading] = useState(false);
+  const cpDadataAbort = useRef<AbortController | null>(null);
+
 
   // флаги сохранения адреса
   const [addressSaved, setAddressSaved] = useState(true);
@@ -120,6 +181,16 @@ export default function RequestPage() {
             setAddressSaved(true);
             setAddressDirty(false);
           }
+        }
+      } catch { /* noop */ }
+    })();
+
+    // Загрузка контрагентов
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE_URL}/api/v1/counterparties`, { credentials: 'include' });
+        if (r.ok) {
+          setCounterparties(await r.json());
         }
       } catch { /* noop */ }
     })();
@@ -169,6 +240,56 @@ export default function RequestPage() {
     }
   };
 
+  // ------- DaData helpers для юр. адреса (аналогично основному) -------
+  const fetchCpSuggest = async (q: string) => {
+    // Используем тот же кэш, что и для основного адреса
+    const keys = Array.from(addrCache.current.keys()).sort((a,b)=>b.length-a.length);
+    const cachedKey = keys.find(k => q.startsWith(k));
+    if (cachedKey) {
+      const cached = addrCache.current.get(cachedKey)!;
+      const f = cached.filter(s => (s.unrestricted_value || s.value).toLowerCase().includes(q.toLowerCase()));
+      if (f.length) return f;
+    }
+
+    cpAddrAbort.current?.abort();
+    cpAddrAbort.current = new AbortController();
+    setCpAddrLoading(true);
+    try {
+      const url = `${API_BASE_URL}/api/v1/suggest/address?q=${encodeURIComponent(q)}&count=5`;
+      const r = await fetch(url, { credentials: 'include', signal: cpAddrAbort.current.signal });
+      const data = await r.json();
+      const list: DaDataAddr[] = (data?.suggestions ?? []).map((s:any)=>({ value: s.value, unrestricted_value: s.unrestricted_value }));
+      addrCache.current.set(q, list); // Пополняем общий кэш
+      return list;
+    } catch { return []; }
+    finally { setCpAddrLoading(false); }
+  };
+
+  // ------- DaData helpers для поиска организаций -------
+  const fetchPartySuggest = async (q: string) => {
+    cpDadataAbort.current?.abort();
+    cpDadataAbort.current = new AbortController();
+    setCpDadataLoading(true);
+    try {
+      const url = `${API_BASE_URL}/api/v1/suggest/party?q=${encodeURIComponent(q)}&count=5`;
+      const r = await fetch(url, { credentials: 'include', signal: cpDadataAbort.current.signal });
+      if (!r.ok) return [];
+      const data = await r.json();
+      return (data?.suggestions ?? []) as DaDataParty[];
+    } catch {
+      return [];
+    } finally {
+      setCpDadataLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const q = cpDadataQuery.trim();
+    if (!cpDadataFocus || q.length < 2) { if (!cpDadataFocus) setCpDadataSugg([]); return; }
+
+    const t = setTimeout(() => fetchPartySuggest(q).then(setCpDadataSugg), 300);
+    return () => clearTimeout(t);
+  }, [cpDadataQuery, cpDadataFocus]);
   // ------- Address suggestions via backend (debounce 100ms + cancel + cache + prefetch on focus) -------
   useEffect(() => {
     const q = addrQuery.trim();
@@ -190,6 +311,19 @@ export default function RequestPage() {
       }
     }
   }, [addrFocus]);
+
+  // ------- CP Address suggestions (debounce 100ms) -------
+  useEffect(() => {
+    const q = cpAddrQuery.trim();
+    if (!cpAddrFocus || q.length < 3) { if (!cpAddrFocus) setCpAddrSugg([]); return; }
+
+    const t = setTimeout(async () => {
+      const list = await fetchCpSuggest(q);
+      setCpAddrSugg(list);
+    }, 150); // чуть больше задержка, т.к. это не основное поле
+
+    return () => clearTimeout(t);
+  }, [cpAddrQuery, cpAddrFocus]);
 
   // ------- Auto-save address on selection / explicit save / blur if changed -------
   const persistAddress = async (value: string) => {
@@ -237,6 +371,110 @@ export default function RequestPage() {
     await persistAddress('');
   };
 
+  // ------- Counterparty helpers -------
+  const validateCpForm = (): boolean => {
+    const errors: CounterpartyFormErrors = {};
+    if (!newCpForm.short_name || newCpForm.short_name.length < 2) errors.short_name = 'Обязательное поле';
+    if (!newCpForm.legal_address || newCpForm.legal_address.length < 3) errors.legal_address = 'Обязательное поле';
+    if (!newCpForm.inn) {
+      errors.inn = 'Обязательное поле';
+    } else if (!/^\d{10}(\d{2})?$/.test(newCpForm.inn)) {
+      errors.inn = 'ИНН должен состоять из 10 или 12 цифр';
+    }
+
+    // Необязательные поля, но если заполнены - валидируем
+    if (newCpForm.ogrn && !/^\d{13}(\d{2})?$/.test(newCpForm.ogrn)) errors.ogrn = '13 или 15 цифр';
+    if (newCpForm.kpp && !/^\d{9}$/.test(newCpForm.kpp)) errors.kpp = '9 цифр';
+    if (newCpForm.okpo && !/^\d{8}(\d{2})?$/.test(newCpForm.okpo)) errors.okpo = '8 или 10 цифр';
+    if (newCpForm.bank_account && !/^\d{20}$/.test(newCpForm.bank_account)) errors.bank_account = '20 цифр';
+    if (newCpForm.bank_bik && !/^\d{9}$/.test(newCpForm.bank_bik)) errors.bank_bik = '9 цифр';
+    if (newCpForm.bank_corr && !/^\d{20}$/.test(newCpForm.bank_corr)) errors.bank_corr = '20 цифр';
+
+    setCpFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleCpFormChange = (field: keyof CounterpartyCreateForm, value: string) => {
+    // Очищаем ошибку для поля, которое пользователь редактирует
+    if (cpFormErrors[field]) {
+      setCpFormErrors(prev => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    }
+    setNewCpForm(p => ({ ...p, [field]: value }));
+  };
+
+  const handleCreateCounterparty = async () => {
+    if (!validateCpForm()) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/counterparties`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', },
+        credentials: 'include',
+        body: JSON.stringify(newCpForm),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Не удалось создать контрагента');
+      }
+      const createdCp: Counterparty = await res.json();
+      setCounterparties(prev => [...prev, createdCp]);
+      setSelectedCp(createdCp);
+      setShowCpCreateModal(false);
+      setNewCpForm({}); // Сбрасываем форму после успеха
+      setCpSearchQuery('');
+      setCpSearchError('');
+    } catch (e: any) {
+      alert(`Ошибка: ${e.message}`);
+    }
+  };
+
+  const handlePickDadataParty = (party: DaDataParty) => {
+    // Заполняем всю форму данными из DaData
+    setNewCpForm({
+      short_name: party.short_name || '',
+      legal_address: party.legal_address || '',
+      inn: party.inn || '',
+      kpp: party.kpp || '',
+      ogrn: party.ogrn || '',
+      okpo: party.okpo || '',
+      okato: party.okato || '',
+    });
+    setCpDadataSugg([]);
+    setCpDadataQuery('');
+    setCpFormErrors({}); // Сбрасываем ошибки, т.к. заполнили заново
+  };
+
+  const handlePickCpAddress = (val: string) => {
+    handleCpFormChange('legal_address', val);
+    setCpAddrQuery(val);
+    setCpAddrSugg([]);
+  };
+
+  const handleSelectCp = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    const cp = counterparties.find(c => c.id === Number(val));
+    if (cp) {
+      setSelectedCp(cp);
+      setCpSearchQuery(`${cp.short_name} (ИНН: ${cp.inn})`);
+      setCpSuggestions([]);
+    }
+  };
+
+  // Поиск контрагента
+  useEffect(() => {
+    if (cpSearchQuery.length > 1 && cpFocus) {
+      const query = cpSearchQuery.toLowerCase();
+      setCpSuggestions(counterparties.filter(cp => cp.short_name.toLowerCase().includes(query) || cp.inn.includes(query)));
+    } else {
+      setCpSuggestions([]);
+    }
+  }, [cpSearchQuery, counterparties, cpFocus]);
   // ------- Category helpers -------
   const addCategory = () =>
     setCats(cs => [
@@ -331,6 +569,7 @@ export default function RequestPage() {
           comment: title?.trim() || undefined,
           delivery_at: deliveryAt || null,
           delivery_address: address || null,
+          counterparty_id: selectedCp?.id || null,
         }),
       });
       if (!r.ok) throw new Error('Не удалось сохранить заявку');
@@ -352,18 +591,18 @@ export default function RequestPage() {
 
           {/* ---- Шапка заявки ---- */}
           <div className="bg-white rounded-xl shadow p-5">
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-              <div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Название заявки</label>
                 <input className={clsInput} value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="Например: Поставка на объект А" />
               </div>
-              <div>
+              <div className="lg:col-span-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Дата и время поставки</label>
                 <input type="datetime-local" className={clsInput} value={deliveryAt} onChange={(e)=>setDeliveryAt(e.target.value)} />
               </div>
 
-              {/* Адрес с подсказками (выпадает ТОЛЬКО при фокусе) */}
-              <div className="lg:col-span-2 relative">
+              {/* Адрес */}
+              <div className="lg:col-span-1 relative">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Адрес поставки</label>
                 <div className="flex gap-2 items-center">
                   <div className="relative flex-1">
@@ -410,6 +649,43 @@ export default function RequestPage() {
                   )}
                 </div>
               </div>
+
+              {/* ---- Блок выбора контрагента ---- */}
+              <div className="lg:col-span-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Контрагент</label>
+                <div className="flex items-start gap-3">
+                  <div className="relative flex-grow">
+                    <input
+                      className={clsInput}
+                      placeholder="Начните вводить ИНН или название для поиска..."
+                      value={cpSearchQuery}
+                      onChange={e => {
+                        setCpSearchQuery(e.target.value);
+                        setSelectedCp(null); // Сбрасываем выбор при ручном вводе
+                      }}
+                      onFocus={() => setCpFocus(true)}
+                      onBlur={() => setTimeout(() => setCpFocus(false), 150)} // Задержка, чтобы успел сработать onMouseDown
+                    />
+                    {cpSuggestions.length > 0 && (
+                      <div className="absolute z-10 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
+                        {cpSuggestions.map(cp => (
+                          <button
+                            type="button"
+                            key={cp.id}
+                            onMouseDown={() => handleSelectCp({ target: { value: String(cp.id) } } as any)}
+                            className="block w-full text-left px-3 py-2 hover:bg-amber-50"
+                          >
+                            {cp.short_name} (ИНН: {cp.inn})
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button type="button" onClick={() => setShowCpCreateModal(true)} className="px-4 py-2 bg-emerald-600 text-white rounded-md whitespace-nowrap">
+                    + Добавить
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="mt-4 flex flex-wrap gap-3">
@@ -417,6 +693,132 @@ export default function RequestPage() {
               <button type="button" onClick={sendRequest} className={`border border-amber-600 text-amber-700 ${clsBtn}`}>Разослать</button>
             </div>
           </div>
+
+          {/* ---- Модальное окно создания контрагента ---- */}
+          {showCpCreateModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-xl p-6 space-y-4 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+                <h3 className="text-xl font-semibold">Новый контрагент</h3>
+                
+                {/* Поиск по DaData */}
+                <div className="relative">
+                  <label className="text-xs text-gray-600">Поиск организации для автоматического заполнения</label>
+                  <input
+                    className={clsInput}
+                    placeholder="Введите ИНН, ОГРН или название организации для автозаполнения"
+                    value={cpDadataQuery}
+                    onChange={e => setCpDadataQuery(e.target.value)}
+                    onFocus={() => setCpDadataFocus(true)}
+                    onBlur={() => setTimeout(() => setCpDadataFocus(false), 200)}
+                  />
+                  {cpDadataLoading && <div className="text-xs text-gray-500 mt-1">Поиск...</div>}
+                  {cpDadataFocus && cpDadataSugg.length > 0 && (
+                    <div className="absolute z-40 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow-lg">
+                      {cpDadataSugg.map((p, i) => (
+                        <button type="button" key={i} onMouseDown={() => handlePickDadataParty(p)} className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm">
+                          <div className="font-semibold">{p.short_name || p.value}</div>
+                          <div className="text-xs text-gray-600">ИНН: {p.inn}, {p.legal_address}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Основное */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
+                  <h4 className="md:col-span-3 text-md font-semibold text-gray-800">Основные реквизиты</h4>
+                  <div>
+                    <label className="text-xs text-gray-600">Краткое наименование*</label>
+                    <input className={cpFormErrors.short_name ? clsInputError : clsInput} placeholder="ООО Ромашка" value={newCpForm.short_name || ''} onChange={e => handleCpFormChange('short_name', e.target.value)} />
+                    {cpFormErrors.short_name && <p className="text-xs text-red-600 mt-1">{cpFormErrors.short_name}</p>}
+                  </div>
+                  <div className="md:col-span-2">
+                    <div className="relative">
+                      <label className="text-xs text-gray-600">Юридический адрес*</label>
+                      <input
+                        className={cpFormErrors.legal_address ? clsInputError : clsInput}
+                        placeholder="Начните вводить юр. адрес..."
+                        value={newCpForm.legal_address || ''}
+                        onFocus={() => { setCpAddrFocus(true); setCpAddrQuery(newCpForm.legal_address || ''); }}
+                        onBlur={() => setTimeout(() => setCpAddrFocus(false), 150)}
+                        onChange={e => {
+                          handleCpFormChange('legal_address', e.target.value);
+                          setCpAddrQuery(e.target.value);
+                        }}
+                      />
+                      {cpFormErrors.legal_address && <p className="text-xs text-red-600 mt-1">{cpFormErrors.legal_address}</p>}
+                      {cpAddrFocus && cpAddrSugg.length > 0 && (
+                        <div className="absolute z-30 mt-1 w-full max-h-48 overflow-auto bg-white border border-gray-200 rounded-md shadow-lg">
+                          {cpAddrSugg.map((s, i) => (
+                            <button type="button" key={i} onMouseDown={() => handlePickCpAddress(s.unrestricted_value || s.value)} className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm">
+                              {s.unrestricted_value || s.value}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600">ИНН*</label>
+                    <input className={cpFormErrors.inn ? clsInputError : clsInput} placeholder="10 или 12 цифр" value={newCpForm.inn || ''} onChange={e => handleCpFormChange('inn', e.target.value)} />
+                    {cpFormErrors.inn && <p className="text-xs text-red-600 mt-1">{cpFormErrors.inn}</p>}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600">ОГРН</label>
+                    <input className={cpFormErrors.ogrn ? clsInputError : clsInput} placeholder="13 или 15 цифр" value={newCpForm.ogrn || ''} onChange={e => handleCpFormChange('ogrn', e.target.value)} />
+                    {cpFormErrors.ogrn && <p className="text-xs text-red-600 mt-1">{cpFormErrors.ogrn}</p>}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600">КПП</label>
+                    <input className={cpFormErrors.kpp ? clsInputError : clsInput} placeholder="9 цифр" value={newCpForm.kpp || ''} onChange={e => handleCpFormChange('kpp', e.target.value)} />
+                    {cpFormErrors.kpp && <p className="text-xs text-red-600 mt-1">{cpFormErrors.kpp}</p>}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600">ОКПО</label>
+                    <input className={cpFormErrors.okpo ? clsInputError : clsInput} placeholder="8 или 10 цифр" value={newCpForm.okpo || ''} onChange={e => handleCpFormChange('okpo', e.target.value)} />
+                    {cpFormErrors.okpo && <p className="text-xs text-red-600 mt-1">{cpFormErrors.okpo}</p>}
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-xs text-gray-600">ОКАТО/ОКТМО</label>
+                    <input className={clsInput} value={newCpForm.okato || ''} onChange={e => handleCpFormChange('okato', e.target.value)} />
+                  </div>
+                </div>
+
+                {/* Банк */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
+                  <h4 className="md:col-span-3 text-md font-semibold text-gray-800">Банковские реквизиты</h4>
+                  <div>
+                    <label className="text-xs text-gray-600">Расчётный счёт</label>
+                    <input className={cpFormErrors.bank_account ? clsInputError : clsInput} placeholder="20 цифр" value={newCpForm.bank_account || ''} onChange={e => handleCpFormChange('bank_account', e.target.value)} />
+                    {cpFormErrors.bank_account && <p className="text-xs text-red-600 mt-1">{cpFormErrors.bank_account}</p>}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600">БИК банка</label>
+                    <input className={cpFormErrors.bank_bik ? clsInputError : clsInput} placeholder="9 цифр" value={newCpForm.bank_bik || ''} onChange={e => handleCpFormChange('bank_bik', e.target.value)} />
+                    {cpFormErrors.bank_bik && <p className="text-xs text-red-600 mt-1">{cpFormErrors.bank_bik}</p>}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600">Наименование банка</label>
+                    <input className={clsInput} placeholder="ПАО Сбербанк" value={newCpForm.bank_name || ''} onChange={e => handleCpFormChange('bank_name', e.target.value)} />
+                  </div>
+                  <div className="md:col-span-3">
+                    <label className="text-xs text-gray-600">Корр. счёт</label>
+                    <input className={cpFormErrors.bank_corr ? clsInputError : clsInput} placeholder="20 цифр" value={newCpForm.bank_corr || ''} onChange={e => handleCpFormChange('bank_corr', e.target.value)} />
+                    {cpFormErrors.bank_corr && <p className="text-xs text-red-600 mt-1">{cpFormErrors.bank_corr}</p>}
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4 border-t">
+                  <button onClick={handleCreateCounterparty} className="px-4 py-2 bg-emerald-600 text-white rounded-md">
+                    Сохранить контрагента
+                  </button>
+                  <button onClick={() => { setShowCpCreateModal(false); setNewCpForm({}); setCpFormErrors({}); }} className="px-4 py-2 border border-gray-300 rounded-md">
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ---- Категории и позиции ---- */}
           {cats.map(cat => (
