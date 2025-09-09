@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import SkeletonLoader from '../components/SkeletonLoader';
 
 const API_BASE_URL = 'https://ekbmetal.cloudpub.ru';
 
@@ -109,7 +110,7 @@ type DaDataParty = {
 type DaDataAddr = { value: string; unrestricted_value?: string };
 
 const clsInput =
-  'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500';
+  'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100 disabled:text-gray-500';
 const clsInputError =
   'w-full px-3 py-2 border border-red-500 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500';
 const clsBtn = 'px-4 py-2 rounded-md';
@@ -122,6 +123,7 @@ export default function RequestPage() {
   const [deliveryAt, setDeliveryAt] = useState('');
   const [address, setAddress] = useState('');
 
+  const [isLoading, setIsLoading] = useState(true); // Общее состояние загрузки страницы
   // ---------------- Counterparty fields ----------------
   const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
   const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
@@ -171,44 +173,51 @@ export default function RequestPage() {
 
   // ------- Init: address from profile & options -------
   useEffect(() => {
-    (async () => {
+    const loadInitialData = async () => {
+      setIsLoading(true);
       try {
-        const r = await fetch(`${API_BASE_URL}/api/v1/users/me/address`, { credentials: 'include' });
-        if (r.ok) {
-          const data = await r.json();
+        // Запускаем все запросы параллельно
+        const [addressRes, counterpartiesRes, categoriesRes, stampsRes, gostsRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/v1/users/me/address`, { credentials: 'include' }).catch(() => null),
+          fetch(`${API_BASE_URL}/api/v1/counterparties`, { credentials: 'include' }).catch(() => null),
+          fetch(`${API_BASE_URL}/api/v1/categories`, { credentials: 'include' }).catch(() => null),
+          fetch(`${API_BASE_URL}/api/v1/stamps`, { credentials: 'include' }).catch(() => null),
+          fetch(`${API_BASE_URL}/api/v1/gosts`, { credentials: 'include' }).catch(() => null),
+        ]);
+
+        // Обрабатываем результаты
+        if (addressRes && addressRes.ok) {
+          const data = await addressRes.json();
           if (data?.delivery_address !== undefined) {
             setAddress(data.delivery_address || '');
             setAddressSaved(true);
-            setAddressDirty(false);
           }
         }
-      } catch { /* noop */ }
-    })();
 
-    // Загрузка контрагентов
-    (async () => {
-      try {
-        const r = await fetch(`${API_BASE_URL}/api/v1/counterparties`, { credentials: 'include' });
-        if (r.ok) {
-          setCounterparties(await r.json());
+        if (counterpartiesRes && counterpartiesRes.ok) {
+          setCounterparties(await counterpartiesRes.json());
         }
-      } catch { /* noop */ }
-    })();
 
-    (async () => {
-      try {
-        const [cat, stp, gst] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/v1/categories`, { credentials: 'include' }),
-          fetch(`${API_BASE_URL}/api/v1/stamps`, { credentials: 'include' }),
-          fetch(`${API_BASE_URL}/api/v1/gosts`, { credentials: 'include' }),
+        const [catData, stpData, gstData] = await Promise.all([
+          categoriesRes && categoriesRes.ok ? categoriesRes.json() : [],
+          stampsRes && stampsRes.ok ? stampsRes.json() : [],
+          gostsRes && gostsRes.ok ? gostsRes.json() : [],
         ]);
+
         setOpts({
-          categories: (await cat.json()) ?? [],
-          grades: (await stp.json()) ?? [],
-          standards: (await gst.json()) ?? [],
+          categories: catData ?? [],
+          grades: stpData ?? [],
+          standards: gstData ?? [],
         });
-      } catch { /* noop */ }
-    })();
+
+      } catch (error) {
+        console.error("Failed to load initial data:", error);
+      } finally {
+        setIsLoading(false); // Снимаем флаг загрузки в любом случае
+      }
+    };
+
+    loadInitialData();
   }, []);
 
   // ------- helpers -------
@@ -334,9 +343,10 @@ export default function RequestPage() {
         credentials: 'include',
         body: JSON.stringify({ delivery_address: value }),
       });
+    setAddrLoading(false); // Снимаем состояние загрузки после ответа
       if (r.ok) {
         setAddressSaved(true);
-        setAddressDirty(false);
+        setAddress(value); // Убедимся, что состояние address соответствует сохраненному
       }
     } catch { /* ignore */ }
   };
@@ -345,18 +355,15 @@ export default function RequestPage() {
     setAddress(val);
     setAddrQuery('');
     setAddrSugg([]);
-    setAddressSaved(false);
-    setAddressDirty(true);
-    // моментально сохраняем выбранный вариант
-    persistAddress(val);
+    setAddressSaved(false); // Адрес изменен, теперь его нужно сохранить
   };
 
   const onBlurAddress = () => {
     setAddrFocus(false);
-    if (addressDirty && address && !addrSugg.length) {
-      persistAddress(address);
-    }
+    // Автоматическое сохранение при потере фокуса убрано по запросу
   };
+
+  // Кнопка "Сохранить"
 
   const onSaveAddressClick = async () => {
     await persistAddress(address);
@@ -364,11 +371,9 @@ export default function RequestPage() {
 
   const clearAddress = async () => {
     setAddress('');
-    setAddrQuery('');
-    setAddrSugg([]);
-    setAddressSaved(false);
-    setAddressDirty(true);
-    await persistAddress('');
+    setAddrQuery(''); // Очищаем запрос для подсказок
+    setAddrSugg([]); // Очищаем подсказки
+    setAddressSaved(false); // Поле очищено, теперь его нужно сохранить (пустым)
   };
 
   // ------- Counterparty helpers -------
@@ -591,107 +596,121 @@ export default function RequestPage() {
 
           {/* ---- Шапка заявки ---- */}
           <div className="bg-white rounded-xl shadow p-5">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="lg:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Название заявки</label>
-                <input className={clsInput} value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="Например: Поставка на объект А" />
-              </div>
-              <div className="lg:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Дата и время поставки</label>
-                <input type="datetime-local" className={clsInput} value={deliveryAt} onChange={(e)=>setDeliveryAt(e.target.value)} />
-              </div>
-
-              {/* Адрес */}
-              <div className="lg:col-span-1 relative">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Адрес поставки</label>
-                <div className="flex gap-2 items-center">
-                  <div className="relative flex-1">
-                    <input
-                      className={clsInput + ' w-full'}
-                      value={address}
-                      onFocus={()=>{ setAddrFocus(true); setAddrQuery(address); }}
-                      onBlur={onBlurAddress}
-                      onChange={(e)=>{ setAddress(e.target.value); setAddrQuery(e.target.value); setAddressSaved(false); setAddressDirty(true); }}
-                      placeholder="Начните вводить адрес..."
-                    />
-                    {addrFocus && addrSugg.length > 0 && (
-                      <div className="absolute z-20 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
-                        {addrSugg.map((s, i) => (
-                          <button
-                            type="button"
-                            key={i}
-                            onMouseDown={()=> onPickAddress(s.unrestricted_value || s.value)}
-                            className="block w-full text-left px-3 py-2 hover:bg-amber-50"
-                          >
-                            {s.unrestricted_value || s.value}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+            {isLoading ? (
+              // --- Скелетон для шапки ---
+              <>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <div className="space-y-1"><SkeletonLoader className="h-5 w-32" /><SkeletonLoader className="h-10 w-full" /></div>
+                  <div className="space-y-1"><SkeletonLoader className="h-5 w-40" /><SkeletonLoader className="h-10 w-full" /></div>
+                  <div className="space-y-1"><SkeletonLoader className="h-5 w-28" /><SkeletonLoader className="h-10 w-full" /></div>
+                  <div className="space-y-1"><SkeletonLoader className="h-5 w-24" /><SkeletonLoader className="h-10 w-full" /></div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <SkeletonLoader className="h-10 w-28" />
+                  <SkeletonLoader className="h-10 w-28" />
+                </div>
+              </>
+            ) : (
+              // --- Реальный контент шапки ---
+              <>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <div className="lg:col-span-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Название заявки</label>
+                    <input className={clsInput} value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="Например: Поставка на объект А" />
+                  </div>
+                  <div className="lg:col-span-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Дата и время поставки</label>
+                    <input type="datetime-local" className={clsInput} value={deliveryAt} onChange={(e)=>setDeliveryAt(e.target.value)} />
                   </div>
 
-                  {/* Кнопка: если адрес редактировался — Сохранить, иначе (и адрес есть) — Очистить */}
-                  {addressDirty ? (
-                    <button type="button" onClick={onSaveAddressClick} className="px-3 py-2 bg-amber-600 text-white rounded-md">
-                      Сохранить
-                    </button>
-                  ) : (
-                    address ? (
-                      <button type="button" onClick={clearAddress} className="px-3 py-2 border border-gray-300 rounded-md">
-                        Очистить
+                  {/* Адрес */}
+                  <div className="lg:col-span-1 relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Адрес поставки</label>
+                    <div className="flex gap-2 items-center">
+                      <div className="relative flex-1">
+                        <input
+                          className={clsInput + ' w-full'}
+                          value={address}
+                          onFocus={()=>{ setAddrFocus(true); setAddrQuery(address); }}
+                          onBlur={onBlurAddress}
+                          onChange={(e)=>{ setAddress(e.target.value); setAddrQuery(e.target.value); setAddressSaved(false); }}
+                          placeholder="Начните вводить адрес..."
+                          disabled={addressSaved && address.length > 0} // Поле disabled, если адрес сохранен и не пуст
+                        />
+                        {addrFocus && addrSugg.length > 0 && (
+                          <div className="absolute z-20 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
+                            {addrSugg.map((s, i) => (
+                              <button
+                                type="button"
+                                key={i}
+                                onMouseDown={() => onPickAddress(s.unrestricted_value || s.value)}
+                                className="block w-full text-left px-3 py-2 hover:bg-amber-50"
+                              >
+                                {s.unrestricted_value || s.value}
+                              </button>
+                            ))}
+                            {addrLoading && <div className="px-3 py-2 text-xs text-gray-500">Загрузка...</div>}
+                            {addrSugg.length === 0 && !addrLoading && addrQuery.length >= 3 && <div className="px-3 py-2 text-xs text-gray-500">Ничего не найдено</div>}
+                          </div>
+                        )}
+                      </div>
+
+                      {addressSaved && address.length > 0 ? (
+                        <button type="button" onClick={clearAddress} className="px-3 py-2 border border-gray-300 rounded-md whitespace-nowrap">Очистить</button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={onSaveAddressClick}
+                          className={`px-3 py-2 rounded-md whitespace-nowrap ${address.trim().length === 0 ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-amber-600 text-white'}`}
+                          disabled={address.trim().length === 0 || addrLoading}
+                        >
+                          {addrLoading ? 'Сохранение...' : 'Сохранить'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ---- Блок выбора контрагента ---- */}
+                  <div className="lg:col-span-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Контрагент</label>
+                    <div className="flex items-start gap-3">
+                      <div className="relative flex-grow">
+                        <input
+                          className={clsInput}
+                          placeholder="Начните вводить ИНН или название для поиска..."
+                          value={cpSearchQuery}
+                          onChange={e => { setCpSearchQuery(e.target.value); setSelectedCp(null); }}
+                          onFocus={() => setCpFocus(true)}
+                          onBlur={() => setTimeout(() => setCpFocus(false), 150)}
+                        />
+                        {cpSuggestions.length > 0 && (
+                          <div className="absolute z-10 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
+                            {cpSuggestions.map(cp => (
+                              <button
+                                type="button"
+                                key={cp.id}
+                                onMouseDown={() => handleSelectCp({ target: { value: String(cp.id) } } as any)}
+                                className="block w-full text-left px-3 py-2 hover:bg-amber-50"
+                              >
+                                {cp.short_name} (ИНН: {cp.inn})
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <button type="button" onClick={() => setShowCpCreateModal(true)} className="px-4 py-2 bg-emerald-600 text-white rounded-md whitespace-nowrap">
+                        + Добавить
                       </button>
-                    ) : null
-                  )}
-
-                  {/* Спиннер загрузки подсказок */}
-                  {addrLoading && (
-                    <div className="text-xs text-gray-500">Загрузка…</div>
-                  )}
-                </div>
-              </div>
-
-              {/* ---- Блок выбора контрагента ---- */}
-              <div className="lg:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Контрагент</label>
-                <div className="flex items-start gap-3">
-                  <div className="relative flex-grow">
-                    <input
-                      className={clsInput}
-                      placeholder="Начните вводить ИНН или название для поиска..."
-                      value={cpSearchQuery}
-                      onChange={e => {
-                        setCpSearchQuery(e.target.value);
-                        setSelectedCp(null); // Сбрасываем выбор при ручном вводе
-                      }}
-                      onFocus={() => setCpFocus(true)}
-                      onBlur={() => setTimeout(() => setCpFocus(false), 150)} // Задержка, чтобы успел сработать onMouseDown
-                    />
-                    {cpSuggestions.length > 0 && (
-                      <div className="absolute z-10 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
-                        {cpSuggestions.map(cp => (
-                          <button
-                            type="button"
-                            key={cp.id}
-                            onMouseDown={() => handleSelectCp({ target: { value: String(cp.id) } } as any)}
-                            className="block w-full text-left px-3 py-2 hover:bg-amber-50"
-                          >
-                            {cp.short_name} (ИНН: {cp.inn})
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    </div>
                   </div>
-                  <button type="button" onClick={() => setShowCpCreateModal(true)} className="px-4 py-2 bg-emerald-600 text-white rounded-md whitespace-nowrap">
-                    + Добавить
-                  </button>
                 </div>
-              </div>
-            </div>
 
-            <div className="mt-4 flex flex-wrap gap-3">
-              <button type="button" onClick={saveRequest} className={`bg-amber-600 text-white ${clsBtn}`}>Сохранить</button>
-              <button type="button" onClick={sendRequest} className={`border border-amber-600 text-amber-700 ${clsBtn}`}>Разослать</button>
-            </div>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button type="button" onClick={saveRequest} className={`bg-amber-600 text-white ${clsBtn}`}>Сохранить</button>
+                  <button type="button" onClick={sendRequest} className={`border border-amber-600 text-amber-700 ${clsBtn}`}>Разослать</button>
+                </div>
+              </>
+            )}
           </div>
 
           {/* ---- Модальное окно создания контрагента ---- */}
@@ -821,7 +840,14 @@ export default function RequestPage() {
           )}
 
           {/* ---- Категории и позиции ---- */}
-          {cats.map(cat => (
+          {isLoading ? (
+            // --- Скелетон для блока категорий ---
+            <div className="bg-white rounded-xl shadow p-5 space-y-4">
+              <SkeletonLoader className="h-8 w-64" />
+              <SkeletonLoader className="h-40 w-full" />
+              <SkeletonLoader className="h-10 w-40" />
+            </div>
+          ) : (cats.map(cat => (
             <div key={cat.id} className="bg-white rounded-xl shadow p-5 space-y-4">
               {/* Заголовок категории: сначала ввод, потом жирный текст + кнопка Изменить */}
               {cat.editingTitle ? (
@@ -1047,18 +1073,26 @@ export default function RequestPage() {
                 </>
               )}
             </div>
-          ))}
+          )))}
 
           {/* Кнопка добавить категорию — слева */}
-          <div className="flex justify-start">
-            <button
-              type="button"
-              onClick={addCategory}
-              className="px-5 py-3 border border-dashed border-gray-400 rounded-md text-gray-700 bg-white shadow-sm"
-            >
-              + Добавить категорию
-            </button>
-          </div>
+          {isLoading ? (
+            // --- Скелетон для кнопки "Добавить категорию" ---
+            <div className="flex justify-start">
+              <SkeletonLoader className="h-14 w-52" />
+            </div>
+          ) : (
+            // --- Реальная кнопка ---
+            <div className="flex justify-start">
+              <button
+                type="button"
+                onClick={addCategory}
+                className="px-5 py-3 border border-dashed border-gray-400 rounded-md text-gray-700 bg-white shadow-sm"
+              >
+                + Добавить категорию
+              </button>
+            </div>
+          )}
         </div>
       </main>
 

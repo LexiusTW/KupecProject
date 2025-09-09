@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import Link from 'next/link';
+import SkeletonLoader from '../components/SkeletonLoader';
 
 const API_BASE_URL = 'https://ekbmetal.cloudpub.ru';
 
@@ -80,7 +81,15 @@ export default function AccountPage() {
             <p className="text-gray-600 mt-1">Ваши отправленные заявки</p>
           </div>
 
-          {loading && <div className="bg-white rounded-xl shadow p-6">Загрузка…</div>}
+          {loading && (
+            <div className="space-y-6">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="bg-white rounded-xl shadow p-6">
+                  <SkeletonLoader className="h-24 w-full" />
+                </div>
+              ))}
+            </div>
+          )}
 
           {!loading && error && (
             <div className="bg-white rounded-xl shadow p-6 text-red-600">{error}</div>

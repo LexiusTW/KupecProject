@@ -8,6 +8,7 @@ import {
   ChevronDoubleRightIcon,
 } from '@heroicons/react/20/solid';
 import type { SearchFormData, Product } from './types'; // 👈 Импорт из твоего types.ts
+import SkeletonLoader from './SkeletonLoader';
 
 const API_BASE_URL = 'https://ekbmetal.cloudpub.ru';
 
@@ -149,65 +150,72 @@ export default function ResultsTable({
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md overflow-x-auto">
-      {isLoading ? (
-        <div className="text-center py-6 text-amber-600">Загрузка данных...</div>
-      ) : (
-        <>
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+      <>
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Категория</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Марка</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">ГОСТ</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Город</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Размер</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-32">Цена</th>
+            </tr>
+          </thead>
+          <tbody className="text-sm">
+            {isLoading ? (
+              [...Array(limit)].map((_, i) => (
+                <tr key={i} className="border-b">
+                  {[...Array(totalColumnCount)].map((_, j) => (
+                    <td key={j} className="px-4 py-2">
+                      <SkeletonLoader className="h-5 w-full" />
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : results.length === 0 ? (
               <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Категория</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Марка</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">ГОСТ</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Город</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Размер</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-32">Цена</th>
+                <td colSpan={totalColumnCount} className="text-center py-4 text-gray-500">
+                  Нет результатов
+                </td>
               </tr>
-            </thead>
-            <tbody className="text-sm">
-              {results.length === 0 ? (
-                <tr>
-                  <td colSpan={totalColumnCount} className="text-center py-4 text-gray-500">
-                    Нет результатов
+            ) : (
+              results.map((item) => (
+                <tr
+                  key={item.id}
+                  className="border-b hover:bg-gray-50 cursor-pointer"
+                  onClick={() =>
+                    onShowDetails({
+                      name: item.name,
+                      category: item.category,
+                      material: item.material || '', // ✅ Гарантируем строку
+                      stamp: item.stamp || '',
+                      city: item.city,
+                      gost: item.gost || '',
+                      diameter: Number(item.diameter) || 0, // ✅ Гарантируем число
+                      thickness: Number(item.thickness) || 0, // ✅ Гарантируем число
+                      length: Number(item.length) || 0, // ✅ Гарантируем число
+                      width: Number(item.width) || 0, // ✅ Гарантируем число
+                      supplier: item.supplier,
+                      price: item.price || 0, // ✅ Гарантируем число
+                    })
+                  }
+                >
+                  <td className="px-4 py-2">{item.category || '—'}</td>
+                  <td className="px-4 py-2">{item.stamp || '—'}</td>
+                  <td className="px-4 py-2">{item.gost || '—'}</td>
+                  <td className="px-4 py-2">{item.city || '—'}</td>
+                  <td className="px-4 py-2">{formatSize(item)}</td>
+                  <td className="px-4 py-2 font-semibold">
+                    {item.price ? `От ${item.price} ₽` : '—'}
                   </td>
                 </tr>
-              ) : (
-                results.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="border-b hover:bg-gray-50 cursor-pointer"
-                    onClick={() =>
-                      onShowDetails({
-                        name: item.name,
-                        category: item.category,
-                        material: item.material || '', // ✅ Гарантируем строку
-                        stamp: item.stamp || '',
-                        city: item.city,
-                        gost: item.gost || '',
-                        diameter: Number(item.diameter) || 0, // ✅ Гарантируем число
-                        thickness: Number(item.thickness) || 0, // ✅ Гарантируем число
-                        length: Number(item.length) || 0, // ✅ Гарантируем число
-                        width: Number(item.width) || 0, // ✅ Гарантируем число
-                        supplier: item.supplier,
-                        price: item.price || 0, // ✅ Гарантируем число
-                      })
-                    }
-                  >
-                    <td className="px-4 py-2">{item.category || '—'}</td>
-                    <td className="px-4 py-2">{item.stamp || '—'}</td>
-                    <td className="px-4 py-2">{item.gost || '—'}</td>
-                    <td className="px-4 py-2">{item.city || '—'}</td>
-                    <td className="px-4 py-2">{formatSize(item)}</td>
-                    <td className="px-4 py-2 font-semibold">
-                      {item.price ? `От ${item.price} ₽` : '—'}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+              ))
+            )}
+          </tbody>
+        </table>
 
-          {totalPages > 1 && (
+        {totalPages > 1 && (
             <div className="mt-6 flex items-center justify-between">
               <div className="text-xs text-gray-500 mt-2">
                 *Цена указана за 1 тонну, с учетом НДС
@@ -267,9 +275,8 @@ export default function ResultsTable({
                 </button>
               </nav>
             </div>
-          )}
-        </>
-      )}
+        )}
+      </>
     </div>
   );
 }
