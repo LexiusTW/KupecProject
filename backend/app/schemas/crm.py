@@ -41,6 +41,9 @@ class EmailOut(BaseModel):
     id: int
     subject: str
     content: str
+    sent_at: datetime
+    is_read: bool
+    excel_file_path: Optional[str] = None
     
     class SomeSchema(BaseModel):
         model_config = ConfigDict(from_attributes=True)

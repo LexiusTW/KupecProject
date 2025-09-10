@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { AuthFormData } from './types';
 
@@ -14,6 +14,7 @@ export default function AuthForm() {
   const checkingRef = useRef(false);
   const submittingRef = useRef(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const { register, handleSubmit, formState: { errors } } = useForm<AuthFormData>();
 
@@ -28,7 +29,8 @@ export default function AuthForm() {
           credentials: 'include',
         });
         if (r.ok) {
-          router.replace('/search');
+          const nextUrl = searchParams.get('next') || '/search';
+          router.replace(nextUrl);
         }
       } catch {
       }
@@ -54,7 +56,8 @@ export default function AuthForm() {
         throw new Error(er.detail || 'Неверный логин или пароль');
       }
 
-      router.push('/search');
+      const nextUrl = searchParams.get('next') || '/search';
+      router.push(nextUrl);
     } catch (e: any) {
       setError(e.message || 'Ошибка входа. Попробуйте снова.');
     } finally {

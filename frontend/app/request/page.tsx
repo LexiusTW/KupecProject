@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import SkeletonLoader from '../components/SkeletonLoader';
+import Notification, { NotificationProps } from '../components/Notification';
 
 const API_BASE_URL = 'https://ekbmetal.cloudpub.ru';
 
@@ -109,6 +110,13 @@ type DaDataParty = {
 
 type DaDataAddr = { value: string; unrestricted_value?: string };
 
+type HeaderErrors = {
+  title?: string;
+  deliveryAt?: string;
+  address?: string;
+  counterparty?: string;
+};
+
 const clsInput =
   'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100 disabled:text-gray-500';
 const clsInputError =
@@ -122,6 +130,7 @@ export default function RequestPage() {
   const [title, setTitle] = useState('');
   const [deliveryAt, setDeliveryAt] = useState('');
   const [address, setAddress] = useState('');
+  const [headerErrors, setHeaderErrors] = useState<HeaderErrors>({});
 
   const [isLoading, setIsLoading] = useState(true); // Общее состояние загрузки страницы
   // ---------------- Counterparty fields ----------------
@@ -171,6 +180,17 @@ export default function RequestPage() {
   const [cats, setCats] = useState<CategoryBlock[]>([]);
   const [catFocus, setCatFocus] = useState<Record<string, boolean>>({}); // фокус на инпуте категории
 
+  // ---------------- UI State ----------------
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [notifications, setNotifications] = useState<Omit<NotificationProps, 'onDismiss'>[]>([]);
+
+  const addNotification = (notif: Omit<NotificationProps, 'id' | 'onDismiss'>) => {
+    const id = crypto.randomUUID();
+    setNotifications(prev => [...prev, { id, ...notif }]);
+  };
+
+  const removeNotification = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
   // ------- Init: address from profile & options -------
   useEffect(() => {
     const loadInitialData = async () => {
@@ -435,7 +455,7 @@ export default function RequestPage() {
       setCpSearchQuery('');
       setCpSearchError('');
     } catch (e: any) {
-      alert(`Ошибка: ${e.message}`);
+      addNotification({ type: 'error', title: 'Ошибка создания контрагента', message: e.message });
     }
   };
 
@@ -527,7 +547,10 @@ export default function RequestPage() {
 
       if (c.kind === 'metal') {
         const m = row as MetalRow;
-        if (!m.mCategory || !m.qty) { alert('Для металлопроката укажите Категорию и Количество'); return c; }
+        if (!m.mCategory || !m.qty) {
+          addNotification({ type: 'warning', title: 'Неполные данные', message: 'Для металлопроката укажите Категорию и Количество.' });
+          return c;
+        }
         item = {
           kind: 'metal',
           category: m.mCategory || null,
@@ -540,7 +563,10 @@ export default function RequestPage() {
         };
       } else {
         const g = row as GenericRow;
-        if (!g.name || !g.qty) { alert('Для прочей позиции укажите Наименование и Количество'); return c; }
+        if (!g.name || !g.qty) {
+          addNotification({ type: 'warning', title: 'Неполные данные', message: 'Для прочей позиции укажите Наименование и Количество.' });
+          return c;
+        }
         item = {
           kind: 'generic',
           category: c.title?.trim() || 'Прочее', // пользовательская категория
@@ -562,8 +588,34 @@ export default function RequestPage() {
   // ------- Whole request save -------
   const allSavedItems = useMemo(() => cats.flatMap(c => c.saved), [cats]);
 
+  const validateHeader = (): boolean => {
+    const errors: HeaderErrors = {};
+    if (!title.trim()) errors.title = 'Название заявки обязательно';
+    if (!deliveryAt) errors.deliveryAt = 'Дата и время обязательны';
+    if (!address.trim()) errors.address = 'Адрес поставки обязателен';
+    if (!selectedCp) errors.counterparty = 'Контрагент обязателен';
+
+    setHeaderErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const saveRequest = async () => {
-    if (!allSavedItems.length) { alert('Добавьте и сохраните хотя бы одну позицию'); return; }
+    if (isSubmitting) return;
+
+    const isHeaderValid = validateHeader();
+
+    if (!allSavedItems.length) {
+      addNotification({ type: 'warning', title: 'Пустая заявка', message: 'Добавьте и сохраните хотя бы одну позицию, чтобы продолжить.' });
+      if (!isHeaderValid) {
+        addNotification({ type: 'warning', title: 'Неполные данные', message: 'Заполните обязательные поля в шапке заявки.' });
+      }
+      return null; // Возвращаем null, если валидация не пройдена или нет позиций
+    }
+    if (!isHeaderValid) {
+      addNotification({ type: 'warning', title: 'Неполные данные', message: 'Заполните обязательные поля в шапке заявки.' });
+      return null; // Возвращаем null, если валидация не пройдена
+    }
+    setIsSubmitting(true);
     try {
       const r = await fetch(`${API_BASE_URL}/api/v1/requests`, {
         method: 'POST',
@@ -571,20 +623,62 @@ export default function RequestPage() {
         credentials: 'include',
         body: JSON.stringify({
           items: allSavedItems,
-          comment: title?.trim() || undefined,
+          comment: title?.trim() || null,
           delivery_at: deliveryAt || null,
           delivery_address: address || null,
           counterparty_id: selectedCp?.id || null,
         }),
       });
-      if (!r.ok) throw new Error('Не удалось сохранить заявку');
-      alert('Заявка сохранена');
-      setCats([]);
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.detail || 'Не удалось сохранить заявку');
+      }
+      const savedRequest: Request = await r.json();
+      addNotification({ type: 'success', title: 'Заявка сохранена', message: 'Ее можно посмотреть в Личном кабинете.' });
+      
+      return savedRequest; // Возвращаем сохраненную заявку
     } catch (e:any) {
-      alert(e.message || 'Ошибка сохранения');
+      addNotification({ type: 'error', title: 'Ошибка сохранения', message: e.message || 'Произошла неизвестная ошибка.' });
+      return null;
+    } finally {
+      setIsSubmitting(false);
+      setShowSendModal(false); // Закрываем модальное окно, если оно было открыто
     }
   };
-  const sendRequest = async () => { await saveRequest(); };
+  const sendRequest = async () => {
+    const savedRequest = await saveRequest();
+    if (!savedRequest) {
+      // Ошибка уже была показана в saveRequest
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const sendRes = await fetch(`${API_BASE_URL}/api/v1/requests/${(savedRequest as any).id}/send`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (!sendRes.ok) {
+        const err = await sendRes.json().catch(() => ({}));
+        throw new Error(err.detail || 'Не удалось разослать заявку');
+      }
+
+      addNotification({ type: 'success', title: 'Заявка отправлена', message: 'Она сохранена в папке "Отправленные".' });
+
+      // Очищаем форму после полной отправки
+      setCats([]);
+      setTitle('');
+      setDeliveryAt('');
+      setSelectedCp(null);
+      setCpSearchQuery('');
+    } catch (e: any) {
+      addNotification({ type: 'error', title: 'Ошибка отправки', message: e.message });
+    } finally {
+      setIsSubmitting(false);
+      setShowSendModal(false);
+    }
+  };
 
   // ---------------- Render ----------------
   return (
@@ -592,6 +686,13 @@ export default function RequestPage() {
       <Header />
 
       <main className="flex-grow">
+        {/* ---- Контейнер для уведомлений ---- */}
+        <div className="fixed top-24 right-5 z-50 w-full max-w-sm space-y-3">
+          {notifications.map(notif => (
+            <Notification key={notif.id} {...notif} onDismiss={removeNotification} />
+          ))}
+        </div>
+
         <div className="container mx-auto px-4 py-8 space-y-6">
 
           {/* ---- Шапка заявки ---- */}
@@ -615,12 +716,24 @@ export default function RequestPage() {
               <>
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                   <div className="lg:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Название заявки</label>
-                    <input className={clsInput} value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="Например: Поставка на объект А" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Название заявки*</label>
+                    <input
+                      className={headerErrors.title ? clsInputError : clsInput}
+                      value={title}
+                      onChange={(e) => { setTitle(e.target.value); if (headerErrors.title) setHeaderErrors(p => ({ ...p, title: undefined })); }}
+                      placeholder="Например: Поставка на объект А"
+                    />
+                    {headerErrors.title && <p className="text-xs text-red-600 mt-1">{headerErrors.title}</p>}
                   </div>
                   <div className="lg:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Дата и время поставки</label>
-                    <input type="datetime-local" className={clsInput} value={deliveryAt} onChange={(e)=>setDeliveryAt(e.target.value)} />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Дата и время поставки*</label>
+                    <input
+                      type="datetime-local"
+                      className={headerErrors.deliveryAt ? clsInputError : clsInput}
+                      value={deliveryAt}
+                      onChange={(e) => { setDeliveryAt(e.target.value); if (headerErrors.deliveryAt) setHeaderErrors(p => ({ ...p, deliveryAt: undefined })); }}
+                    />
+                    {headerErrors.deliveryAt && <p className="text-xs text-red-600 mt-1">{headerErrors.deliveryAt}</p>}
                   </div>
 
                   {/* Адрес */}
@@ -629,14 +742,15 @@ export default function RequestPage() {
                     <div className="flex gap-2 items-center">
                       <div className="relative flex-1">
                         <input
-                          className={clsInput + ' w-full'}
+                          className={`${headerErrors.address ? clsInputError : clsInput} w-full`}
                           value={address}
                           onFocus={()=>{ setAddrFocus(true); setAddrQuery(address); }}
                           onBlur={onBlurAddress}
-                          onChange={(e)=>{ setAddress(e.target.value); setAddrQuery(e.target.value); setAddressSaved(false); }}
+                          onChange={(e)=>{ setAddress(e.target.value); setAddrQuery(e.target.value); setAddressSaved(false); if (headerErrors.address) setHeaderErrors(p => ({ ...p, address: undefined })); }}
                           placeholder="Начните вводить адрес..."
                           disabled={addressSaved && address.length > 0} // Поле disabled, если адрес сохранен и не пуст
                         />
+                        {headerErrors.address && <p className="text-xs text-red-600 mt-1">{headerErrors.address}</p>}
                         {addrFocus && addrSugg.length > 0 && (
                           <div className="absolute z-20 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
                             {addrSugg.map((s, i) => (
@@ -672,17 +786,18 @@ export default function RequestPage() {
 
                   {/* ---- Блок выбора контрагента ---- */}
                   <div className="lg:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Контрагент</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Контрагент*</label>
                     <div className="flex items-start gap-3">
                       <div className="relative flex-grow">
                         <input
-                          className={clsInput}
+                          className={headerErrors.counterparty ? clsInputError : clsInput}
                           placeholder="Начните вводить ИНН или название для поиска..."
                           value={cpSearchQuery}
-                          onChange={e => { setCpSearchQuery(e.target.value); setSelectedCp(null); }}
+                          onChange={e => { setCpSearchQuery(e.target.value); setSelectedCp(null); if (headerErrors.counterparty) setHeaderErrors(p => ({ ...p, counterparty: undefined })); }}
                           onFocus={() => setCpFocus(true)}
                           onBlur={() => setTimeout(() => setCpFocus(false), 150)}
                         />
+                        {headerErrors.counterparty && <p className="text-xs text-red-600 mt-1">{headerErrors.counterparty}</p>}
                         {cpSuggestions.length > 0 && (
                           <div className="absolute z-10 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
                             {cpSuggestions.map(cp => (
@@ -706,8 +821,8 @@ export default function RequestPage() {
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <button type="button" onClick={saveRequest} className={`bg-amber-600 text-white ${clsBtn}`}>Сохранить</button>
-                  <button type="button" onClick={sendRequest} className={`border border-amber-600 text-amber-700 ${clsBtn}`}>Разослать</button>
+                  <button type="button" onClick={saveRequest} disabled={isSubmitting} className={`bg-amber-600 text-white ${clsBtn} disabled:opacity-50`}>{isSubmitting ? 'Сохранение...' : 'Сохранить'}</button>
+                  <button type="button" onClick={() => setShowSendModal(true)} disabled={isSubmitting} className={`border border-amber-600 text-amber-700 ${clsBtn} disabled:opacity-50`}>Разослать</button>
                 </div>
               </>
             )}
@@ -832,6 +947,32 @@ export default function RequestPage() {
                     Сохранить контрагента
                   </button>
                   <button onClick={() => { setShowCpCreateModal(false); setNewCpForm({}); setCpFormErrors({}); }} className="px-4 py-2 border border-gray-300 rounded-md">
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ---- Модальное окно подтверждения рассылки ---- */}
+          {showSendModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-xl p-6 space-y-4 w-full max-w-lg">
+                <h3 className="text-xl font-semibold">Подтверждение рассылки</h3>
+                <p>Заявка будет отправлена поставщикам по следующим категориям:</p>
+                <ul className="list-disc list-inside bg-gray-50 p-3 rounded-md">
+                  {cats.filter(c => c.saved.length > 0).map(cat => (
+                    <li key={cat.id} className="text-gray-800">{cat.title || 'Прочее'}</li>
+                  ))}
+                  {cats.filter(c => c.saved.length > 0).length === 0 && (
+                    <li className="text-gray-500">Нет сохраненных позиций для отправки.</li>
+                  )}
+                </ul>
+                <div className="flex gap-3 pt-4 border-t">
+                  <button onClick={sendRequest} disabled={isSubmitting || cats.filter(c => c.saved.length > 0).length === 0} className="px-4 py-2 bg-emerald-600 text-white rounded-md disabled:opacity-50">
+                    {isSubmitting ? 'Отправка...' : 'Отправить'}
+                  </button>
+                  <button onClick={() => setShowSendModal(false)} disabled={isSubmitting} className="px-4 py-2 border border-gray-300 rounded-md disabled:opacity-50">
                     Отмена
                   </button>
                 </div>

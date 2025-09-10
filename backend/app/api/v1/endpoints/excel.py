@@ -3,6 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_db, get_current_user
@@ -177,3 +178,26 @@ async def read_excel_file(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error reading Excel file: {str(e)}"
         )
+
+
+@router.get("/excel/download/{filepath:path}")
+async def download_excel_file(
+    filepath: str,
+    user=Depends(get_current_user),
+):
+    # ВАЖНО: filepath приходит из URL, нужно убедиться, что он безопасен.
+    # Мы ожидаем, что путь будет относительным к `outgoing_dir`.
+    # Нормализуем путь, чтобы предотвратить атаки типа "directory traversal".
+    safe_base_dir = os.path.abspath(excel_processor.outgoing_dir)
+    full_path = os.path.abspath(os.path.join(safe_base_dir, filepath))
+
+    if not full_path.startswith(safe_base_dir):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied"
+        )
+
+    if not os.path.exists(full_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(path=full_path, filename=os.path.basename(full_path), media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

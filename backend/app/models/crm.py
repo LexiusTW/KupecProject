@@ -57,3 +57,4 @@ class Email(Base):
     sent_at = Column(DateTime(timezone=True), server_default=func.now())
     is_read = Column(Boolean, default=False)
     is_deleted = Column(Boolean, default=False)
+    excel_file_path = Column(String, nullable=True) # Путь к сгенерированному Excel файлу

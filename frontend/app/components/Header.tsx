@@ -54,6 +54,10 @@ export default function Header() {
               Личный кабинет
             </Link>
 
+            <Link href="/mail" className="text-gray-700 hover:text-amber-600 transition-colors">
+              Почта
+            </Link>
+
             <Link
               href="/request"
               className="border border-amber-600 text-amber-700 px-4 py-2 rounded-md hover:bg-amber-50"

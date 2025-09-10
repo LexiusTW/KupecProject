@@ -8,6 +8,8 @@ from sqlalchemy.orm import joinedload, selectinload
 from app.api.deps import get_db, get_current_user
 from app.models.user import Buyer, Seller
 from app.models.request import Request, RequestItem
+from app.models.crm import Email
+from app.excel_processor import ExcelProcessor
 from app.schemas.request import RequestCreate, RequestOut, RequestItemCreate, RequestItemOut
 
 router = APIRouter()
@@ -101,3 +103,67 @@ async def create_request(
     await db.commit()
     await db.refresh(req, attribute_names=["items", "counterparty"])
     return req
+
+@router.post("/requests/{request_id}/send", status_code=status.HTTP_202_ACCEPTED)
+async def send_request_to_suppliers(
+    request_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: Buyer = Depends(get_current_user),
+):
+    """
+    "Рассылает" заявку. На данном этапе это означает создание Email-сообщения
+    в "Отправленных" у пользователя.
+    """
+    if not isinstance(user, Buyer):
+        raise HTTPException(status_code=403, detail="Only buyers can send requests")
+
+    # 1. Находим заявку и проверяем, что она принадлежит пользователю
+    q = select(Request).where(Request.id == request_id, Request.buyer_id == user.id).options(selectinload(Request.items))
+    req = (await db.execute(q)).scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found or access denied")
+
+    # 2. Формируем тему и тело письма
+    subject = f"Заявка №{req.id}: {req.comment or 'Без названия'}"
+    
+    items_html = "<ul>"
+    for item in req.items:
+        if item.kind == 'metal':
+            details = f"{item.category or ''} {item.size or ''} {item.stamp or ''} {item.state_standard or ''}".strip()
+            items_html += f"<li>{details} - {item.quantity} шт.</li>"
+        else:
+            items_html += f"<li>{item.name or 'Прочее'} - {item.quantity} {item.uom or 'шт.'}</li>"
+    items_html += "</ul>"
+    
+    content = f"""<h3>Детали заявки:</h3>{items_html}"""
+
+    # 3. Генерируем Excel файл
+    excel_processor = ExcelProcessor()
+    try:
+        # generate_request_excel возвращает словарь {kind: filepath}
+        # Мы предполагаем, что для заявки может быть несколько файлов (metal, generic)
+        # Для простоты пока берем первый попавшийся путь.
+        # В будущем можно будет хранить JSON со всеми путями.
+        files_created = await excel_processor.generate_request_excel(req.id, db)
+        # Берем путь к первому сгенерированному файлу
+        excel_path = next(iter(files_created.values())) if files_created else None
+    except Exception as e:
+        # Если генерация Excel не удалась, мы не прерываем процесс, а просто логируем ошибку
+        print(f"Could not generate Excel file for request {req.id}: {e}")
+        excel_path = None
+
+    # 4. Создаем запись в таблице Email
+    # Так как это "рассылка" самому себе в "Отправленные",
+    # указываем и отправителя, и получателя как текущего пользователя.
+    email = Email(
+        sender_buyer_id=user.id,
+        receiver_buyer_id=user.id,  # Указываем получателя, чтобы пройти CHECK constraint
+        subject=subject,
+        content=content,
+        excel_file_path=excel_path
+    )
+    db.add(email)
+    await db.commit()
+    await db.refresh(email)
+
+    return {"message": "Request has been sent and saved to your outbox.", "email_id": email.id}

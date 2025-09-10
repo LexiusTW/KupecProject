@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const publicPaths = ['/login', '/register', '/search', '/request', '/account'];
+const publicPaths = ['/login', '/register', '/search', '/request', '/account', '/mail'];
 
 export function middleware(request: NextRequest) {
   const token = request.cookies.get('access_token')?.value;

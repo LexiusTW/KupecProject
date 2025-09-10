@@ -2,3 +2,20 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Анимации для уведомлений */
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-out {
+  animation: slide-in 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  /* Анимацию исчезновения можно добавить через JS, изменяя класс, или использовать более сложные CSS-техники */
+}
