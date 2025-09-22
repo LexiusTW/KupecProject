@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { RegisterFormData, Role } from './types';
 
-const API_BASE_URL = 'https://ekbmetal.cloudpub.ru';
+const API_BASE_URL = 'https://kupecbek.cloudpub.ru';
 
 export default function RegisterForm() {
   const [activeTab, setActiveTab] = useState<Role>('buyer');

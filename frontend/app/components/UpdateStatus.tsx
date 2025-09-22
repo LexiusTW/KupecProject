@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-const API_BASE_URL = 'https://ekbmetal.cloudpub.ru';
+const API_BASE_URL = 'https://kupecbek.cloudpub.ru';
 
 function formatUpdateTime(isoString: string | null): string {
   if (!isoString) {

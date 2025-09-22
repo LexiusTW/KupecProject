@@ -1,16 +1,36 @@
+# Зависимости
+node_modules
 */node_modules
-*/.next
-*/out
+/.pnp
+.pnp.js
+
+# Next.js
+/frontend/.next/
+/frontend/out/
+
+# Python
+/.venv
+/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build
 /build
+dist/
+
+# Логи
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# переменные окружения
+.env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+
+# системные файлы
 .DS_Store
-npm-debug.log*
-*.pyd
-*.md
-*.rst
-*.pyc
-/.venv
-.env

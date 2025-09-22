@@ -10,7 +10,7 @@ import {
 import type { SearchFormData, Product } from './types'; // 👈 Импорт из твоего types.ts
 import SkeletonLoader from './SkeletonLoader';
 
-const API_BASE_URL = 'https://ekbmetal.cloudpub.ru';
+const API_BASE_URL = 'https://kupecbek.cloudpub.ru';
 
 interface ResultItem {
   id: number;

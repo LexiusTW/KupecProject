@@ -78,11 +78,25 @@ async def update_counterparty(
     if not cp: raise HTTPException(status_code=404, detail="Not found")
     ensure_owner(cp, current_buyer.id)
 
-    for k, v in payload.model_dump().items():
+    for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(cp, k, v)
     await db.commit()
     await db.refresh(cp)
     return cp
+
+@router.get("/{cp_id}/has-bank-details", response_model=bool)
+async def has_bank_details(
+    cp_id: int,
+    db: Session = Depends(deps.get_db),
+    current_buyer = Depends(deps.get_current_user)
+):
+    cp = await db.get(Counterparty, cp_id)
+    if not cp: raise HTTPException(status_code=404, detail="Not found")
+    ensure_owner(cp, current_buyer.id)
+    
+    if cp.bank_account and cp.bank_bik and cp.bank_name and cp.bank_corr:
+        return True
+    return False
 
 @router.delete("/{cp_id}", status_code=204)
 async def delete_counterparty(

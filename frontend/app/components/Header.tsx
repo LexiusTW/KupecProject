@@ -5,9 +5,9 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-const API_BASE_URL = 'https://ekbmetal.cloudpub.ru';
+const API_BASE_URL = 'https://kupecbek.cloudpub.ru';
 
-export default function Header() {
+export default function Header({ showNav = true }: { showNav?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -17,15 +17,16 @@ export default function Header() {
   const handleLogout = async () => {
     if (isLoggingOut) return;
     setIsLoggingOut(true);
+    // Мгновенно уводим на /login, а запрос на logout отправляем асинхронно
+    router.push('/login');
     try {
-      await fetch(`${API_BASE_URL}/api/v1/logout`, {
+      fetch(`${API_BASE_URL}/api/v1/logout`, {
         method: 'POST',
         credentials: 'include',
-      });
-    } catch {
+        keepalive: true as any,
+      }).catch(() => {});
     } finally {
       setIsLoggingOut(false);
-      router.push('/login');
     }
   };
 
@@ -44,7 +45,7 @@ export default function Header() {
         </div>
 
         {/* Навигация */}
-        {!isAuthPage ? (
+        {showNav && !isAuthPage ? (
           <nav className="flex items-center space-x-8">
             <Link href="/search" className="text-gray-700 hover:text-amber-600 transition-colors">
               Поиск

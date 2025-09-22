@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import aiofiles
 import httpx
 from playwright.async_api import async_playwright
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 
 from app.db.session import create_tables, AsyncSessionLocal
 from app.parsers.excel_processor import process_excel_file
@@ -539,6 +539,12 @@ async def process_metallotorg_city(session, city_name: str, url: str):
             print(f"  - Временный файл {file_path} удален.")
 
 async def main():
+    print("Creating sequence for request display_id...")
+    async with AsyncSessionLocal() as session:
+        async with session.begin():
+            await session.execute(text("CREATE SEQUENCE IF NOT EXISTS request_display_id_seq START 1;"))
+    print("Sequence created.")
+
     await create_tables()
 
     async with async_playwright() as p:

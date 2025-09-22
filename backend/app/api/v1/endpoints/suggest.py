@@ -26,8 +26,10 @@ async def suggest_address(
         raw = dadata_client.suggest("address", q, count=count)
     except Exception as e:
         logger.exception("DaData suggest error")
-        # 502, чтобы явно показать внешнюю ошибку
-        raise HTTPException(status_code=502, detail=f"DaData error: {e}")
+        msg = str(e)
+        if 'timed out' in msg or 'ConnectTimeout' in msg or 'ConnectError' in msg:
+            raise HTTPException(status_code=504, detail="Сервис DaData недоступен (таймаут соединения). Попробуйте позже.")
+        raise HTTPException(status_code=502, detail=f"Ошибка сервиса DaData: {msg}")
 
     suggestions = []
     for item in raw or []:
@@ -59,7 +61,10 @@ async def suggest_party(
         raw = dadata_client.suggest("party", q, count=count)
     except Exception as e:
         logger.exception("DaData suggest party error")
-        raise HTTPException(status_code=502, detail=f"DaData error: {e}")
+        msg = str(e)
+        if 'timed out' in msg or 'ConnectTimeout' in msg or 'ConnectError' in msg:
+            raise HTTPException(status_code=504, detail="Сервис DaData недоступен (таймаут соединения). Попробуйте позже.")
+        raise HTTPException(status_code=502, detail=f"Ошибка сервиса DaData: {msg}")
 
     suggestions = []
     for item in raw or []:

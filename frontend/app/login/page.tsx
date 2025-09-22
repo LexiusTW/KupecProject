@@ -3,8 +3,10 @@
 import AuthForm from '../components/AuthForm';
 import Footer from '../components/Footer';
 import Header from '../components/Header';
+import SkeletonLoader from '../components/SkeletonLoader';
 
 export default function LoginPage() {
+  const showSkeleton = false;
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-yellow-100 flex flex-col">
       <Header />
@@ -17,7 +19,15 @@ export default function LoginPage() {
                 Вход в систему
               </h1>
             </div>
-            <AuthForm />
+            {showSkeleton ? (
+              <div className="space-y-4">
+                <SkeletonLoader className="h-10 w-full" />
+                <SkeletonLoader className="h-10 w-full" />
+                <SkeletonLoader className="h-10 w-1/2" />
+              </div>
+            ) : (
+              <AuthForm />
+            )}
           </div>
         </div>
       </main>

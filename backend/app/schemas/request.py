@@ -1,6 +1,7 @@
 from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 from datetime import datetime
+from uuid import UUID
 
 Role = Literal["buyer", "seller"]
 
@@ -14,7 +15,7 @@ class RequestItemBase(BaseModel):
     # НОВОЕ: универсальные «строковые» поля
     size: Optional[str] = None   # для metal (строковой размер на витрину)
     dims: Optional[str] = None   # для generic (свободные характеристики)
-    uom: Optional[str] = None    # для generic (ед. изм.)
+    unit: Optional[str] = None    # для generic (ед. изм.)
 
     # metal
     stamp: Optional[str] = None
@@ -54,12 +55,44 @@ class CounterpartyInRequest(BaseModel):
     short_name: str
     model_config = {"from_attributes": True}
 
-class RequestOut(BaseModel):
+class OfferItemCreate(BaseModel):
+    request_item_id: int
+    price: float
+
+class OfferCreate(BaseModel):
+    supplier_id: Optional[int] = None
+    comment: Optional[str] = None
+    items: List[OfferItemCreate]
+
+class SupplierOut(BaseModel):
     id: int
+    short_name: str
+    model_config = {"from_attributes": True}
+
+class OfferItemOut(BaseModel):
+    id: int
+    request_item_id: int
+    price: float
+    model_config = {"from_attributes": True}
+
+class OfferOut(BaseModel):
+    id: int
+    supplier: SupplierOut
+    comment: Optional[str] = None
+    created_at: datetime
+    items: List[OfferItemOut]
+    model_config = {"from_attributes": True}
+
+class RequestOut(BaseModel):
+    id: UUID
+    display_id: int
     comment: Optional[str] = None
     delivery_address: Optional[str] = None
     delivery_at: Optional[datetime] = None
     created_at: datetime
+    status: str
+    winner_offer_id: Optional[int] = None
     items: List[RequestItemOut]
+    offers: List[OfferOut]
     counterparty: Optional[CounterpartyInRequest] = None
     model_config = {"from_attributes": True}

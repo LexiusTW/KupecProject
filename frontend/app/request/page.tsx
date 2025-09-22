@@ -1,16 +1,44 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import SkeletonLoader from '../components/SkeletonLoader';
 import Notification, { NotificationProps } from '../components/Notification';
 
-const API_BASE_URL = 'https://ekbmetal.cloudpub.ru';
+const API_BASE_URL = 'https://kupecbek.cloudpub.ru';
+
+const units = [
+  { value: 'шт', label: 'Штук (шт)' },
+  { value: 'г', label: 'Грамм (г)' },
+  { value: 'кг', label: 'Килограмм (кг)' },
+  { value: 'ц', label: 'Центнер (ц)' },
+  { value: 'т', label: 'Тонна (т)' },
+  { value: 'м', label: 'Метр (м)' },
+  { value: 'пог. м', label: 'Погонный метр (пог. м)' },
+  { value: 'м²', label: 'Квадратный метр (м²)' },
+  { value: 'га', label: 'Гектар (га)' },
+  { value: 'мин', label: 'Минута (мин)' },
+  { value: 'ч', label: 'Час (ч)' },
+  { value: 'дн/сут', label: 'Сутки (дн/сут)' },
+  { value: 'мес', label: 'Месяц (мес)' },
+  { value: 'год', label: 'Год (г)' },
+  { value: 'л', label: 'Литр (л)' },
+  { value: 'см³', label: 'Кубический сантиметр (см³)' },
+  { value: 'м³', label: 'Кубический метр (м³)' },
+  { value: 'дм³', label: 'Кубический дециметр (дм³)' },
+];
 
 // ---------------- Types ----------------
 type RowKind = 'metal' | 'generic';
 
+type Supplier = {
+  id: number;
+  short_name: string;
+  inn: string;
+  category?: string | null;
+  email?: string | null;
+};
 type MetalRow = {
   _id: string;
   kind: 'metal';
@@ -20,15 +48,15 @@ type MetalRow = {
   grade?: string;
   allowAnalogs?: boolean;
   qty?: string;
+  unit?: string;
   comment?: string;
 };
 
 type GenericRow = {
   _id: string;
-  kind: 'generic';
   name?: string;
   dims?: string;  // размеры/характеристики
-  uom?: string;   // ед. изм.
+  unit?: string;   // ед. изм.
   qty?: string;
   comment?: string;
 };
@@ -42,22 +70,25 @@ type OptionsPack = {
 };
 
 type SavedMetalItem = {
+  id: string;
   kind: 'metal';
   category?: string | null;
   size?: string | null;           // показываем в таблице
   state_standard?: string | null;
   stamp?: string | null;
   quantity: number | null;
+  unit?: string | null;
   allow_analogs: boolean;
   comment?: string | null;
 };
 
 type SavedGenericItem = {
+  id: string;
   kind: 'generic';
   category: string; // пользовательская категория
   name: string;
   dims?: string | null; // размеры/характеристики
-  uom?: string | null;  // ед. изм.
+  unit?: string | null;  // ед. изм.
   quantity: number | null;
   comment: string;
 };
@@ -86,6 +117,9 @@ type Counterparty = {
   bank_bik?: string | null;
   bank_name?: string | null;
   bank_corr?: string | null;
+  director?: string | null;
+  phone?: string | null;
+  email?: string | null;
 };
 
 // Для формы создания, все поля опциональны и строковые
@@ -117,6 +151,21 @@ type HeaderErrors = {
   counterparty?: string;
 };
 
+type EmailGroup = {
+  id: string;
+  name: string;
+  items: SavedItem[];
+  selectedSupplierIds: number[];
+  manualEmails: string;
+};
+
+type MetalEmailEntry = {
+  id: string;
+  email: string;
+  selectedItemIds: Set<string>;
+  supplierId: number | null;
+};
+
 const clsInput =
   'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100 disabled:text-gray-500';
 const clsInputError =
@@ -124,6 +173,201 @@ const clsInputError =
 const clsBtn = 'px-4 py-2 rounded-md';
 const th = 'px-3 py-2 text-left text-xs font-semibold text-gray-600';
 const td = 'px-3 py-2';
+
+const formatSavedItem = (item: SavedItem) => {
+  if (item.kind === 'metal') {
+    const m = item as SavedMetalItem;
+    const parts = [
+      m.category,
+      m.size,
+      m.stamp,
+      m.state_standard,
+    ].filter(Boolean).join(', ');
+    return `${parts} - ${m.quantity} ${m.unit || 'шт.'}`;
+  }
+  const g = item as SavedGenericItem;
+  const parts = [g.name, g.dims].filter(Boolean).join(', ');
+  return `${parts} - ${g.quantity} ${g.unit || 'шт.'}`;
+};
+
+const ItemSelectionDropdown = ({ items, selectedIds, onSelectionChange, catKind, disabled }: { items: SavedItem[], selectedIds: Set<string>, onSelectionChange: (ids: Set<string>) => void, catKind: RowKind, disabled?: boolean }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      onSelectionChange(new Set(items.map(item => item.id)));
+    } else {
+      onSelectionChange(new Set());
+    }
+  };
+
+  const handleSelectItem = (itemId: string, checked: boolean) => {
+    const newSelectedIds = new Set(selectedIds);
+    if (checked) {
+      newSelectedIds.add(itemId);
+    } else {
+      newSelectedIds.delete(itemId);
+    }
+    onSelectionChange(newSelectedIds);
+  };
+
+  const allSelected = items.length > 0 && selectedIds.size === items.length;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center justify-between w-full px-3 py-2 border border-gray-300 rounded-md text-sm disabled:bg-gray-100 disabled:text-gray-500"
+        disabled={disabled}
+      >
+        <span>Выбрано {selectedIds.size} из {items.length}</span>
+        <svg className="w-4 h-4 ml-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+      </button>
+      {isOpen && (
+        <div className="absolute z-10 mt-1 w-96 max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow-lg">
+          <div className="p-2 border-b sticky top-0 bg-white">
+            <label className="flex items-center gap-2 text-sm p-1 rounded">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                checked={allSelected}
+                onChange={handleSelectAll}
+              />
+              <span className="font-medium">Выбрать все</span>
+            </label>
+          </div>
+          <div className="space-y-1 p-2">
+            {items.map(item => (
+              <label key={item.id} className="flex items-center gap-2 text-sm hover:bg-gray-50 p-1 rounded">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                  checked={selectedIds.has(item.id)}
+                  onChange={(e) => handleSelectItem(item.id, e.target.checked)}
+                />
+                <span>{formatSavedItem(item)}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const PreviewItemsTable = ({ items }: { items: SavedItem[] }) => {
+  const isMetalOnly = items.every(item => item.kind === 'metal');
+  const isGenericOnly = items.every(item => item.kind === 'generic');
+
+  if (isMetalOnly) {
+    return (
+      <table className="w-full min-w-[600px] text-xs border-collapse">
+        <thead className="bg-gray-100 sticky top-0">
+          <tr>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Категория</th>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Наименование</th>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Размер</th>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">ГОСТ</th>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Марка</th>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Аналоги</th>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Количество</th>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Ед. изм.</th>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Комментарий</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(item => {
+            const metalItem = item as SavedMetalItem;
+            return (
+              <tr key={item.id} className="border-t border-gray-200">
+                <td className="p-2 align-top">Металлопрокат</td>
+                <td className="p-2 align-top">{metalItem.category || '—'}</td>
+                <td className="p-2 align-top">{metalItem.size || '—'}</td>
+                <td className="p-2 align-top">{metalItem.state_standard || '—'}</td>
+                <td className="p-2 align-top">{metalItem.stamp || '—'}</td>
+                <td className="p-2 align-top">{metalItem.allow_analogs ? 'Да' : 'Нет'}</td>
+                <td className="p-2 align-top whitespace-nowrap">{metalItem.quantity}</td>
+                <td className="p-2 align-top whitespace-nowrap">{metalItem.unit || 'шт.'}</td>
+                <td className="p-2 align-top">{metalItem.comment || '—'}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    );
+  }
+
+  if (isGenericOnly) {
+    return (
+      <table className="w-full min-w-[500px] text-xs border-collapse">
+        <thead className="bg-gray-100 sticky top-0">
+          <tr>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Наименование</th>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Размеры, характеристики</th>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Ед. изм.</th>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Количество</th>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Комментарий</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(item => {
+            const genericItem = item as SavedGenericItem;
+            return (
+              <tr key={item.id} className="border-t border-gray-200">
+                <td className="p-2 align-top">{genericItem.name}</td>
+                <td className="p-2 align-top">{genericItem.dims || '—'}</td>
+                <td className="p-2 align-top whitespace-nowrap">{genericItem.unit || 'шт.'}</td>
+                <td className="p-2 align-top whitespace-nowrap">{genericItem.quantity}</td>
+                <td className="p-2 align-top">{genericItem.comment || '—'}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    );
+  }
+
+  return (
+    <table className="w-full min-w-[700px] text-xs border-collapse">
+      <thead className="bg-gray-100 sticky top-0">
+        <tr>
+          <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Категория</th>
+          <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Наименование</th>
+          <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Характеристики</th>
+          <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Кол-во</th>
+          <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Комментарий</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map(item => {
+          if (item.kind === 'metal') {
+            const metalItem = item as SavedMetalItem;
+            return (
+              <tr key={item.id} className="border-t border-gray-200">
+                <td className="p-2 align-top">Металлопрокат</td>
+                <td className="p-2 align-top">{metalItem.category}</td>
+                <td className="p-2 align-top">{[metalItem.size, metalItem.stamp, metalItem.state_standard].filter(Boolean).join(', ')}</td>
+                <td className="p-2 align-top whitespace-nowrap">{metalItem.quantity} {metalItem.unit || 'шт.'}</td>
+                <td className="p-2 align-top">{metalItem.comment || '—'}</td>
+              </tr>
+            );
+          }
+          const genericItem = item as SavedGenericItem;
+          return (
+            <tr key={item.id} className="border-t border-gray-200">
+              <td className="p-2 align-top">{genericItem.category}</td>
+              <td className="p-2 align-top">{genericItem.name}</td>
+              <td className="p-2 align-top">{genericItem.dims || '—'}</td>
+              <td className="p-2 align-top whitespace-nowrap">{genericItem.quantity} {genericItem.unit || 'шт.'}</td>
+              <td className="p-2 align-top">{genericItem.comment || '—'}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+};
 
 export default function RequestPage() {
   // ---------------- Header fields ----------------
@@ -135,6 +379,7 @@ export default function RequestPage() {
   const [isLoading, setIsLoading] = useState(true); // Общее состояние загрузки страницы
   // ---------------- Counterparty fields ----------------
   const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
   const [showCpCreateModal, setShowCpCreateModal] = useState(false);
   const [newCpForm, setNewCpForm] = useState<CounterpartyCreateForm>({});
@@ -159,7 +404,7 @@ export default function RequestPage() {
 
   // флаги сохранения адреса
   const [addressSaved, setAddressSaved] = useState(true);
-  const [addressDirty, setAddressDirty] = useState(false);
+  const [addressDirty, setAddressDirty] = useState(false); // unused
   const [addrLoading, setAddrLoading] = useState(false);
 
   // DaData
@@ -183,7 +428,102 @@ export default function RequestPage() {
   // ---------------- UI State ----------------
   const [showSendModal, setShowSendModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [emailPreviews, setEmailPreviews] = useState<{recipients: string, header: string, footer: string, items: SavedItem[]}[]>([]);
+  const [sendCategoryManual, setSendCategoryManual] = useState<Record<string, string>>({});
+  // Состояния для модального окна рассылки
+  const [sendCategoryEnabled, setSendCategoryEnabled] = useState<Record<string, boolean>>({});
+  const [sendCategorySupplier, setSendCategorySupplier] = useState<Record<string, number | null>>({});
+  const [metalSendConfig, setMetalSendConfig] = useState<Record<string, MetalEmailEntry[]>>({});
+  // Опции поставщиков для каждой категории (получаем с сервера /suppliers/by-category)
+  const [sendCategoryOptions, setSendCategoryOptions] = useState<Record<string, Supplier[]>>({});
+
+  const handleOpenSendModal = () => {
+    const initialEnabledState: Record<string, boolean> = {};
+    const initialMetalConfig: Record<string, MetalEmailEntry[]> = {};
+    const initialManualEmails: Record<string, string> = {};
+
+    cats.forEach(cat => {
+      if (cat.saved.length > 0) {
+        initialEnabledState[cat.id] = true;
+        if (cat.kind === 'metal') {
+          initialMetalConfig[cat.id] = [{
+            id: crypto.randomUUID(),
+            email: '',
+            supplierId: null,
+            selectedItemIds: new Set(cat.saved.map(item => item.id)),
+          }];
+        } else {
+          initialManualEmails[cat.id] = '';
+        }
+      }
+    });
+
+    setSendCategoryEnabled(initialEnabledState);
+    setMetalSendConfig(initialMetalConfig);
+    setSendCategoryManual(initialManualEmails);
+    setShowSendModal(true);
+  };
+
+  // Обновление превью писем при изменении данных в модалке
+  useEffect(() => {
+    if (!showSendModal) {
+      return;
+    }
+
+    const recipientGroups: Record<string, SavedItem[]> = {};
+
+    const enabledCats = cats.filter(cat => cat.saved.length > 0 && sendCategoryEnabled[cat.id]);
+
+    enabledCats.forEach(cat => {
+      if (cat.kind === 'metal') {
+        const metalEmails = metalSendConfig[cat.id] || [];
+        metalEmails.forEach(entry => {
+          const email = entry.email.trim();
+          if (email && entry.selectedItemIds.size > 0) {
+            if (!recipientGroups[email]) {
+              recipientGroups[email] = [];
+            }
+            const itemsToSend = cat.saved.filter(item => entry.selectedItemIds.has(item.id));
+            recipientGroups[email].push(...itemsToSend);
+          }
+        });
+      } else {
+        const email = (sendCategoryManual[cat.id] || '').trim();
+        if (email) {
+          if (!recipientGroups[email]) {
+            recipientGroups[email] = [];
+          }
+          recipientGroups[email].push(...cat.saved);
+        }
+      }
+    });
+
+    const previews = Object.entries(recipientGroups).map(([email, items]) => {
+      // Убираем дубликаты, если одна и та же позиция попала в разные категории
+      const uniqueItems = Array.from(new Map(items.map(item => [item.id, item])).values());
+
+      const header = `Здравствуйте,\n\nПросим предоставить коммерческое предложение по следующим позициям:`;
+      const footer = `\nС уважением,\n${selectedCp?.director || 'Покупатель'}`;
+
+      return {
+        recipients: email,
+        header,
+        footer,
+        items: uniqueItems,
+      };
+    });
+
+    setEmailPreviews(previews);
+  }, [showSendModal, cats, title, selectedCp, sendCategoryEnabled, sendCategorySupplier, sendCategoryManual, suppliers, sendCategoryOptions, metalSendConfig]);
   const [notifications, setNotifications] = useState<Omit<NotificationProps, 'onDismiss'>[]>([]);
+
+  const handlePreviewChange = (index: number, part: 'header' | 'footer', value: string) => {
+    setEmailPreviews(currentPreviews => {
+        const newPreviews = [...currentPreviews];
+        newPreviews[index] = { ...newPreviews[index], [part]: value };
+        return newPreviews;
+    });
+  };
 
   const addNotification = (notif: Omit<NotificationProps, 'id' | 'onDismiss'>) => {
     const id = crypto.randomUUID();
@@ -191,15 +531,16 @@ export default function RequestPage() {
   };
 
   const removeNotification = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
-  // ------- Init: address from profile & options -------
+  // ------- Init: address from profile & options ------- 
   useEffect(() => {
     const loadInitialData = async () => {
       setIsLoading(true);
       try {
         // Запускаем все запросы параллельно
-        const [addressRes, counterpartiesRes, categoriesRes, stampsRes, gostsRes] = await Promise.all([
+        const [addressRes, counterpartiesRes, suppliersRes, categoriesRes, stampsRes, gostsRes] = await Promise.all([
           fetch(`${API_BASE_URL}/api/v1/users/me/address`, { credentials: 'include' }).catch(() => null),
           fetch(`${API_BASE_URL}/api/v1/counterparties`, { credentials: 'include' }).catch(() => null),
+          fetch(`${API_BASE_URL}/api/v1/suppliers/my`, { credentials: 'include' }).catch(() => null),
           fetch(`${API_BASE_URL}/api/v1/categories`, { credentials: 'include' }).catch(() => null),
           fetch(`${API_BASE_URL}/api/v1/stamps`, { credentials: 'include' }).catch(() => null),
           fetch(`${API_BASE_URL}/api/v1/gosts`, { credentials: 'include' }).catch(() => null),
@@ -216,6 +557,9 @@ export default function RequestPage() {
 
         if (counterpartiesRes && counterpartiesRes.ok) {
           setCounterparties(await counterpartiesRes.json());
+        }
+        if (suppliersRes && suppliersRes.ok) {
+          setSuppliers(await suppliersRes.json());
         }
 
         const [catData, stpData, gstData] = await Promise.all([
@@ -240,7 +584,7 @@ export default function RequestPage() {
     loadInitialData();
   }, []);
 
-  // ------- helpers -------
+  // ------- helpers ------- 
   const fetchSuggest = async (q: string) => {
     // кэш по префиксу: ищем самое длинное совпадение
     const keys = Array.from(addrCache.current.keys()).sort((a,b)=>b.length-a.length);
@@ -259,7 +603,7 @@ export default function RequestPage() {
       const url = `${API_BASE_URL}/api/v1/suggest/address?q=${encodeURIComponent(q)}&count=7`;
       const r = await fetch(url, { credentials: 'include', signal: addrAbort.current.signal, keepalive: true as any });
       const data = await r.json();
-      const list: DaDataAddr[] = (data?.suggestions ?? []).map((s:any)=>({ value: s.value, unrestricted_value: s.unrestricted_value }));
+      const list: DaDataAddr[] = (data?.suggestions ?? []).map((s: any) => ({ value: s.value, unrestricted_value: s.unrestricted_value }));
       addrCache.current.set(q, list);
       return list;
     } catch {
@@ -269,7 +613,21 @@ export default function RequestPage() {
     }
   };
 
-  // ------- DaData helpers для юр. адреса (аналогично основному) -------
+  // Получаем список поставщиков, подходящих по категории у текущего покупателя
+  const fetchSuppliersByCategory = async (category: string): Promise<Supplier[]> => {
+    if (!category || !category.trim()) return [];
+    try {
+      const url = `${API_BASE_URL}/api/v1/suppliers/by-category?category=${encodeURIComponent(category)}`;
+      const r = await fetch(url, { credentials: 'include' });
+      if (!r.ok) return [];
+      const data = await r.json();
+      return Array.isArray(data) ? data as Supplier[] : [];
+    } catch (e) {
+      return [];
+    }
+  };
+
+  // ------- DaData helpers для юр. адреса (аналогично основному) ------- 
   const fetchCpSuggest = async (q: string) => {
     // Используем тот же кэш, что и для основного адреса
     const keys = Array.from(addrCache.current.keys()).sort((a,b)=>b.length-a.length);
@@ -287,14 +645,14 @@ export default function RequestPage() {
       const url = `${API_BASE_URL}/api/v1/suggest/address?q=${encodeURIComponent(q)}&count=5`;
       const r = await fetch(url, { credentials: 'include', signal: cpAddrAbort.current.signal });
       const data = await r.json();
-      const list: DaDataAddr[] = (data?.suggestions ?? []).map((s:any)=>({ value: s.value, unrestricted_value: s.unrestricted_value }));
+      const list: DaDataAddr[] = (data?.suggestions ?? []).map((s: any) => ({ value: s.value, unrestricted_value: s.unrestricted_value }));
       addrCache.current.set(q, list); // Пополняем общий кэш
       return list;
-    } catch { return []; }
+    } catch { return []; } 
     finally { setCpAddrLoading(false); }
   };
 
-  // ------- DaData helpers для поиска организаций -------
+  // ------- DaData helpers для поиска организаций ------- 
   const fetchPartySuggest = async (q: string) => {
     cpDadataAbort.current?.abort();
     cpDadataAbort.current = new AbortController();
@@ -319,7 +677,6 @@ export default function RequestPage() {
     const t = setTimeout(() => fetchPartySuggest(q).then(setCpDadataSugg), 300);
     return () => clearTimeout(t);
   }, [cpDadataQuery, cpDadataFocus]);
-  // ------- Address suggestions via backend (debounce 100ms + cancel + cache + prefetch on focus) -------
   useEffect(() => {
     const q = addrQuery.trim();
     if (!addrFocus || q.length < 3) { if (!addrFocus) setAddrSugg([]); return; }
@@ -341,7 +698,7 @@ export default function RequestPage() {
     }
   }, [addrFocus]);
 
-  // ------- CP Address suggestions (debounce 100ms) -------
+  // ------- CP Address suggestions (debounce 100ms) ------- 
   useEffect(() => {
     const q = cpAddrQuery.trim();
     if (!cpAddrFocus || q.length < 3) { if (!cpAddrFocus) setCpAddrSugg([]); return; }
@@ -354,7 +711,6 @@ export default function RequestPage() {
     return () => clearTimeout(t);
   }, [cpAddrQuery, cpAddrFocus]);
 
-  // ------- Auto-save address on selection / explicit save / blur if changed -------
   const persistAddress = async (value: string) => {
     try {
       const r = await fetch(`${API_BASE_URL}/api/v1/users/me/address`, {
@@ -363,19 +719,19 @@ export default function RequestPage() {
         credentials: 'include',
         body: JSON.stringify({ delivery_address: value }),
       });
-    setAddrLoading(false); // Снимаем состояние загрузки после ответа
+      setAddrLoading(false); // Снимаем состояние загрузки после ответа
       if (r.ok) {
         setAddressSaved(true);
         setAddress(value); // Убедимся, что состояние address соответствует сохраненному
       }
-    } catch { /* ignore */ }
+    } catch { /* ignore */ } 
   };
 
   const onPickAddress = (val: string) => {
     setAddress(val);
     setAddrQuery('');
     setAddrSugg([]);
-    setAddressSaved(false); // Адрес изменен, теперь его нужно сохранить
+    setAddressSaved(false); // Адрес изменен, теперь его нужно сохранить 
   };
 
   const onBlurAddress = () => {
@@ -383,7 +739,7 @@ export default function RequestPage() {
     // Автоматическое сохранение при потере фокуса убрано по запросу
   };
 
-  // Кнопка "Сохранить"
+  // Кнопка "Сохранить" 
 
   const onSaveAddressClick = async () => {
     await persistAddress(address);
@@ -396,9 +752,10 @@ export default function RequestPage() {
     setAddressSaved(false); // Поле очищено, теперь его нужно сохранить (пустым)
   };
 
-  // ------- Counterparty helpers -------
+  // ------- Counterparty helpers ------- 
   const validateCpForm = (): boolean => {
     const errors: CounterpartyFormErrors = {};
+    // Обязательные поля (сделано аналогично валидации поставщика)
     if (!newCpForm.short_name || newCpForm.short_name.length < 2) errors.short_name = 'Обязательное поле';
     if (!newCpForm.legal_address || newCpForm.legal_address.length < 3) errors.legal_address = 'Обязательное поле';
     if (!newCpForm.inn) {
@@ -407,29 +764,115 @@ export default function RequestPage() {
       errors.inn = 'ИНН должен состоять из 10 или 12 цифр';
     }
 
-    // Необязательные поля, но если заполнены - валидируем
-    if (newCpForm.ogrn && !/^\d{13}(\d{2})?$/.test(newCpForm.ogrn)) errors.ogrn = '13 или 15 цифр';
-    if (newCpForm.kpp && !/^\d{9}$/.test(newCpForm.kpp)) errors.kpp = '9 цифр';
-    if (newCpForm.okpo && !/^\d{8}(\d{2})?$/.test(newCpForm.okpo)) errors.okpo = '8 или 10 цифр';
-    if (newCpForm.bank_account && !/^\d{20}$/.test(newCpForm.bank_account)) errors.bank_account = '20 цифр';
-    if (newCpForm.bank_bik && !/^\d{9}$/.test(newCpForm.bank_bik)) errors.bank_bik = '9 цифр';
-    if (newCpForm.bank_corr && !/^\d{20}$/.test(newCpForm.bank_corr)) errors.bank_corr = '20 цифр';
+    // Теперь остальные поля тоже обязательны и валидируются по шаблонам
+    if (!newCpForm.ogrn) {
+      errors.ogrn = 'Обязательное поле';
+    } else if (!/^\d{13}(\d{2})?$/.test(newCpForm.ogrn)) {
+      errors.ogrn = 'ОГРН: 13 или 15 цифр';
+    }
+
+    if (newCpForm.kpp && !/^\d{9}$/.test(newCpForm.kpp)) {
+      errors.kpp = 'КПП: 9 цифр';
+    }
+
+    if (!newCpForm.okpo) {
+      errors.okpo = 'Обязательное поле';
+    } else if (!/^\d{8}(\d{2})?$/.test(newCpForm.okpo)) {
+      errors.okpo = 'ОКПО: 8 или 10 цифр';
+    }
+
+    if (!newCpForm.okato) {
+      errors.okato = 'Обязательное поле';
+    } else if (!/^\d{8,15}$/.test(newCpForm.okato)) {
+      errors.okato = 'ОКАТО/ОКТМО: от 8 до 15 цифр';
+    }
+
+    // Банковские реквизиты не обязательны, но если заполнены - валидируются
+    if (newCpForm.bank_account && !/^\d{20}$/.test(newCpForm.bank_account)) {
+      errors.bank_account = 'Расчётный счёт: 20 цифр';
+    }
+
+    if (newCpForm.bank_bik && !/^\d{9}$/.test(newCpForm.bank_bik)) {
+      errors.bank_bik = 'БИК: 9 цифр';
+    }
+
+    if (newCpForm.bank_corr && !/^\d{20}$/.test(newCpForm.bank_corr)) {
+      errors.bank_corr = 'Корр. счёт: 20 цифр';
+    }
+
+    if (newCpForm.bank_name && (newCpForm.bank_name || '').trim().length < 2) {
+      errors.bank_name = 'Наименование банка: мин. 2 символа';
+    }
+
+    // Контактная информация
+    if (!newCpForm.director || (newCpForm.director || '').trim().length < 2) {
+      errors.director = 'Обязательное поле';
+    }
+
+    if (!newCpForm.phone) {
+      errors.phone = 'Обязательное поле';
+    } else if (!/^\+?[0-9\s\-()]{5,}$/.test(newCpForm.phone)) {
+      errors.phone = 'Некорректный телефон';
+    }
+
+    if (!newCpForm.email) {
+      errors.email = 'Обязательное поле';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newCpForm.email)) {
+      errors.email = 'Некорректный e-mail';
+    }
 
     setCpFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const handleCpFormChange = (field: keyof CounterpartyCreateForm, value: string) => {
-    // Очищаем ошибку для поля, которое пользователь редактирует
-    if (cpFormErrors[field]) {
-      setCpFormErrors(prev => {
-        const next = { ...prev };
-        delete next[field];
-        return next;
-      });
+  const handleCpFormChange = (field: keyof CounterpartyCreateForm, value: string | ChangeEvent<HTMLInputElement>) => {
+  const inputElement = typeof value !== 'string' ? value.target : null;
+  const val = typeof value === 'string' ? value : inputElement?.value ?? '';
+
+  if (cpFormErrors[field]) {
+    setCpFormErrors(prev => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }
+
+  if (field === 'phone') {
+    const input = inputElement;
+    if (!input) {
+      setNewCpForm(p => ({ ...p, phone: val }));
+      return;
     }
-    setNewCpForm(p => ({ ...p, [field]: value }));
-  };
+
+    let digits = input.value.replace(/\D/g, '');
+    const matrix = "+7 (___) ___-__-__";
+
+    if (digits.length > 0) {
+      if (digits.startsWith('8')) digits = '7' + digits.slice(1);
+      if (!digits.startsWith('7')) digits = '7' + digits;
+    }
+
+    let i = 0;
+    let formattedValue = matrix.replace(/./g, (char) => {
+      if (/[_\d]/.test(char) && i < digits.length) {
+        return digits[i++];
+      } else if (i >= digits.length) {
+        return "";
+      }
+      return char;
+    });
+
+    const setCursorToEnd = () => {
+      input.selectionStart = input.selectionEnd = formattedValue.length;
+    };
+    requestAnimationFrame(setCursorToEnd);
+
+    setNewCpForm(p => ({ ...p, phone: formattedValue }));
+  } else {
+    setNewCpForm(p => ({ ...p, [field]: val }));
+  }
+};
+
 
   const handleCreateCounterparty = async () => {
     if (!validateCpForm()) {
@@ -500,7 +943,7 @@ export default function RequestPage() {
       setCpSuggestions([]);
     }
   }, [cpSearchQuery, counterparties, cpFocus]);
-  // ------- Category helpers -------
+  // ------- Category helpers ------- 
   const addCategory = () =>
     setCats(cs => [
       ...cs,
@@ -537,7 +980,7 @@ export default function RequestPage() {
       : ({ _id: crypto.randomUUID(), kind: 'generic' } as GenericRow);
   }
 
-  // ------- Save single position into category.saved (and hide editor row) -------
+  // ------- Save single position into category.saved (and hide editor row) ------- 
   const savePosition = (cid: string, rid: string) =>
     setCats(cs => cs.map(c => {
       if (c.id !== cid) return c;
@@ -552,27 +995,30 @@ export default function RequestPage() {
           return c;
         }
         item = {
+          id: crypto.randomUUID(),
           kind: 'metal',
           category: m.mCategory || null,
           size: m.size || null,
           state_standard: m.gost || null,
           stamp: m.grade || null,
           quantity: m.qty ? Number(m.qty) : null,
+          unit: m.unit || null,
           allow_analogs: !!m.allowAnalogs,
           comment: m.comment || null,
         };
-      } else {
+      } else { // generic
         const g = row as GenericRow;
         if (!g.name || !g.qty) {
           addNotification({ type: 'warning', title: 'Неполные данные', message: 'Для прочей позиции укажите Наименование и Количество.' });
           return c;
         }
         item = {
+          id: crypto.randomUUID(),
           kind: 'generic',
           category: c.title?.trim() || 'Прочее', // пользовательская категория
           name: g.name || '',
           dims: g.dims || null,
-          uom: g.uom || null,
+          unit: g.unit || null,
           quantity: g.qty ? Number(g.qty) : null,
           comment: g.comment || '',
         };
@@ -585,7 +1031,7 @@ export default function RequestPage() {
       };
     }));
 
-  // ------- Whole request save -------
+  // ------- Whole request save ------- 
   const allSavedItems = useMemo(() => cats.flatMap(c => c.saved), [cats]);
 
   const validateHeader = (): boolean => {
@@ -642,43 +1088,145 @@ export default function RequestPage() {
       return null;
     } finally {
       setIsSubmitting(false);
-      setShowSendModal(false); // Закрываем модальное окно, если оно было открыто
+      // Do not close modal on save, only on send
     }
   };
+
   const sendRequest = async () => {
+    // 1. Сначала сохраняем заявку, чтобы получить её ID
     const savedRequest = await saveRequest();
     if (!savedRequest) {
-      // Ошибка уже была показана в saveRequest
       return;
     }
+  
+    // 2. Собираем данные для отправки
+    const enabledCats = cats.filter(c => c.saved.length > 0 && sendCategoryEnabled[c.id]);
+  
+    if (enabledCats.length === 0) {
+      addNotification({ type: 'warning', title: 'Никто не выбран', message: 'Выберите хотя бы одну категорию для отправки.' });
+      return;
+    }
+  
+    // Группируем получателей и их данные
+    const recipientData = new Map<string, { items: Set<SavedItem>, header: string, footer: string, supplierIds: Set<number> }>();
 
+    emailPreviews.forEach(preview => {
+        recipientData.set(preview.recipients, {
+            items: new Set(preview.items),
+            header: preview.header,
+            footer: preview.footer,
+            supplierIds: new Set(),
+        });
+    });
+
+    // Добавляем ID поставщиков
+    enabledCats.forEach(cat => {
+        if (cat.kind === 'metal') {
+            const metalEmails = metalSendConfig[cat.id] || [];
+            metalEmails.forEach(entry => {
+                const email = entry.email.trim();
+                if (email && entry.supplierId && recipientData.has(email)) {
+                    recipientData.get(email)!.supplierIds.add(entry.supplierId);
+                }
+            });
+        } else { // generic
+            const supplierId = sendCategorySupplier[cat.id];
+            const manualEmail = (sendCategoryManual[cat.id] || '').trim();
+            if (manualEmail && supplierId && recipientData.has(manualEmail)) {
+                recipientData.get(manualEmail)!.supplierIds.add(supplierId);
+            }
+        }
+    });
+
+    const groupsPayload = Array.from(recipientData.entries()).map(([email, data]) => {
+        const items = Array.from(data.items);
+        const supplierIds = Array.from(data.supplierIds);
+        // Создаем уникальный ключ группы на основе email
+        const group_key = `group_${email}`;
+        // Собираем названия категорий для этой группы
+        const category_titles = [...new Set(items.map(i => i.kind === 'metal' ? (i as SavedMetalItem).category : (i as SavedGenericItem).category).filter(Boolean))] as string[];
+
+        return {
+            group_key,
+            category_titles,
+            supplier_ids: supplierIds,
+            manual_emails: [email],
+            items: items,
+            email_header: data.header,
+            email_footer: data.footer,
+        };
+    });
+  
+    if (groupsPayload.length === 0) {
+      addNotification({ type: 'warning', title: 'Нет получателей', message: 'Укажите e-mail для отправки хотя бы в одной категории.' });
+      return;
+    }
+  
     setIsSubmitting(true);
     try {
-      const sendRes = await fetch(`${API_BASE_URL}/api/v1/requests/${(savedRequest as any).id}/send`, {
+      const sendRes = await fetch(`${API_BASE_URL}/api/v1/requests/${(savedRequest as any).id}/send-to-suppliers`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        body: JSON.stringify({ groups: groupsPayload }),
       });
-
+  
       if (!sendRes.ok) {
-        const err = await sendRes.json().catch(() => ({}));
-        throw new Error(err.detail || 'Не удалось разослать заявку');
+        const errJson = await sendRes.json().catch(() => ({}));
+        throw new Error(errJson.detail || 'Не удалось разослать заявку поставщикам');
       }
+  
+      const result = await sendRes.json();
+      addNotification({ type: 'success', title: 'Заявка отправлена', message: result.message || 'Заявка успешно разослана выбранным поставщикам.' });
 
-      addNotification({ type: 'success', title: 'Заявка отправлена', message: 'Она сохранена в папке "Отправленные".' });
-
-      // Очищаем форму после полной отправки
       setCats([]);
       setTitle('');
       setDeliveryAt('');
       setSelectedCp(null);
       setCpSearchQuery('');
+      setSendCategoryManual({});
+      setSendCategoryEnabled({});
+      setSendCategorySupplier({});
+      setMetalSendConfig({});
+      setShowSendModal(false);
     } catch (e: any) {
-      addNotification({ type: 'error', title: 'Ошибка отправки', message: e.message });
+      addNotification({ type: 'error', title: 'Ошибка отправки', message: e.message || String(e) });
     } finally {
       setIsSubmitting(false);
-      setShowSendModal(false);
     }
   };
+
+  const addMetalEmail = (catId: string) => {
+    setMetalSendConfig(prev => ({
+      ...prev,
+      [catId]: [
+        ...(prev[catId] || []),
+        {
+          id: crypto.randomUUID(),
+          email: '',
+          supplierId: null,
+          selectedItemIds: new Set(cats.find(c => c.id === catId)?.saved.map(item => item.id) || []),
+        }
+      ]
+    }));
+  };
+
+  const removeMetalEmail = (catId: string, entryId: string) => {
+    setMetalSendConfig(prev => ({
+      ...prev,
+      [catId]: (prev[catId] || []).filter(entry => entry.id !== entryId),
+    }));
+  };
+
+  const updateMetalEmailEntry = (catId: string, entryId: string, field: keyof MetalEmailEntry, value: any) => {
+    setMetalSendConfig(prev => ({
+      ...prev,
+      [catId]: (prev[catId] || []).map(entry =>
+        entry.id === entryId ? { ...entry, [field]: value } : entry
+      ),
+    }));
+  };
+
 
   // ---------------- Render ----------------
   return (
@@ -712,7 +1260,7 @@ export default function RequestPage() {
                 </div>
               </>
             ) : (
-              // --- Реальный контент шапки ---
+              // --- Реальный контент шапки --- 
               <>
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                   <div className="lg:col-span-1">
@@ -744,9 +1292,17 @@ export default function RequestPage() {
                         <input
                           className={`${headerErrors.address ? clsInputError : clsInput} w-full`}
                           value={address}
-                          onFocus={()=>{ setAddrFocus(true); setAddrQuery(address); }}
+                          onFocus={()=>{
+                            setAddrFocus(true);
+                            setAddrQuery(address);
+                          }}
                           onBlur={onBlurAddress}
-                          onChange={(e)=>{ setAddress(e.target.value); setAddrQuery(e.target.value); setAddressSaved(false); if (headerErrors.address) setHeaderErrors(p => ({ ...p, address: undefined })); }}
+                          onChange={(e)=>{
+                            setAddress(e.target.value);
+                            setAddrQuery(e.target.value);
+                            setAddressSaved(false);
+                            if (headerErrors.address) setHeaderErrors(p => ({ ...p, address: undefined }));
+                          }}
                           placeholder="Начните вводить адрес..."
                           disabled={addressSaved && address.length > 0} // Поле disabled, если адрес сохранен и не пуст
                         />
@@ -822,7 +1378,7 @@ export default function RequestPage() {
 
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button type="button" onClick={saveRequest} disabled={isSubmitting} className={`bg-amber-600 text-white ${clsBtn} disabled:opacity-50`}>{isSubmitting ? 'Сохранение...' : 'Сохранить'}</button>
-                  <button type="button" onClick={() => setShowSendModal(true)} disabled={isSubmitting} className={`border border-amber-600 text-amber-700 ${clsBtn} disabled:opacity-50`}>Разослать</button>
+                  <button type="button" onClick={handleOpenSendModal} disabled={isSubmitting || allSavedItems.length === 0} className={`border border-amber-600 text-amber-700 ${clsBtn} disabled:opacity-50`}>Разослать</button>
                 </div>
               </>
             )}
@@ -898,23 +1454,24 @@ export default function RequestPage() {
                     {cpFormErrors.inn && <p className="text-xs text-red-600 mt-1">{cpFormErrors.inn}</p>}
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">ОГРН</label>
+                    <label className="text-xs text-gray-600">ОГРН*</label>
                     <input className={cpFormErrors.ogrn ? clsInputError : clsInput} placeholder="13 или 15 цифр" value={newCpForm.ogrn || ''} onChange={e => handleCpFormChange('ogrn', e.target.value)} />
                     {cpFormErrors.ogrn && <p className="text-xs text-red-600 mt-1">{cpFormErrors.ogrn}</p>}
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">КПП</label>
+                    <label className="text-xs text-gray-600">КПП*</label>
                     <input className={cpFormErrors.kpp ? clsInputError : clsInput} placeholder="9 цифр" value={newCpForm.kpp || ''} onChange={e => handleCpFormChange('kpp', e.target.value)} />
                     {cpFormErrors.kpp && <p className="text-xs text-red-600 mt-1">{cpFormErrors.kpp}</p>}
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">ОКПО</label>
+                    <label className="text-xs text-gray-600">ОКПО*</label>
                     <input className={cpFormErrors.okpo ? clsInputError : clsInput} placeholder="8 или 10 цифр" value={newCpForm.okpo || ''} onChange={e => handleCpFormChange('okpo', e.target.value)} />
                     {cpFormErrors.okpo && <p className="text-xs text-red-600 mt-1">{cpFormErrors.okpo}</p>}
                   </div>
                   <div className="md:col-span-2">
-                    <label className="text-xs text-gray-600">ОКАТО/ОКТМО</label>
-                    <input className={clsInput} value={newCpForm.okato || ''} onChange={e => handleCpFormChange('okato', e.target.value)} />
+                    <label className="text-xs text-gray-600">ОКАТО/ОКТМО*</label>
+                    <input className={cpFormErrors.okato ? clsInputError : clsInput} value={newCpForm.okato || ''} onChange={e => handleCpFormChange('okato', e.target.value)} />
+                    {cpFormErrors.okato && <p className="text-xs text-red-600 mt-1">{cpFormErrors.okato}</p>}
                   </div>
                 </div>
 
@@ -933,7 +1490,8 @@ export default function RequestPage() {
                   </div>
                   <div>
                     <label className="text-xs text-gray-600">Наименование банка</label>
-                    <input className={clsInput} placeholder="ПАО Сбербанк" value={newCpForm.bank_name || ''} onChange={e => handleCpFormChange('bank_name', e.target.value)} />
+                    <input className={cpFormErrors.bank_name ? clsInputError : clsInput} placeholder="ПАО Сбербанк" value={newCpForm.bank_name || ''} onChange={e => handleCpFormChange('bank_name', e.target.value)} />
+                    {cpFormErrors.bank_name && <p className="text-xs text-red-600 mt-1">{cpFormErrors.bank_name}</p>}
                   </div>
                   <div className="md:col-span-3">
                     <label className="text-xs text-gray-600">Корр. счёт</label>
@@ -942,11 +1500,35 @@ export default function RequestPage() {
                   </div>
                 </div>
 
+                {/* Контактная информация */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
+                  <h4 className="md:col-span-3 text-md font-semibold text-gray-800">Контактная информация</h4>
+                  <div>
+                    <label className="text-xs text-gray-600">ФИО директора*</label>
+                    <input className={cpFormErrors.director ? clsInputError : clsInput} placeholder="Иванов И.И." value={newCpForm.director || ''} onChange={e => handleCpFormChange('director', e.target.value)} />
+                    {cpFormErrors.director && <p className="text-xs text-red-600 mt-1">{cpFormErrors.director}</p>}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600">Телефон*</label>
+                    <input className={cpFormErrors.phone ? clsInputError : clsInput} placeholder="+7 (999) 999-99-99" value={newCpForm.phone || ''} onChange={e => handleCpFormChange('phone', e)} />
+                    {cpFormErrors.phone && <p className="text-xs text-red-600 mt-1">{cpFormErrors.phone}</p>}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600">E-mail*</label>
+                    <input className={cpFormErrors.email ? clsInputError : clsInput} placeholder="contact@company.ru" value={newCpForm.email || ''} onChange={e => handleCpFormChange('email', e.target.value)} />
+                    {cpFormErrors.email && <p className="text-xs text-red-600 mt-1">{cpFormErrors.email}</p>}
+                  </div>
+                </div>
+
                 <div className="flex gap-3 pt-4 border-t">
                   <button onClick={handleCreateCounterparty} className="px-4 py-2 bg-emerald-600 text-white rounded-md">
                     Сохранить контрагента
                   </button>
-                  <button onClick={() => { setShowCpCreateModal(false); setNewCpForm({}); setCpFormErrors({}); }} className="px-4 py-2 border border-gray-300 rounded-md">
+                  <button onClick={() => {
+                    setShowCpCreateModal(false);
+                    setNewCpForm({});
+                    setCpFormErrors({});
+                  }} className="px-4 py-2 border border-gray-300 rounded-md">
                     Отмена
                   </button>
                 </div>
@@ -957,19 +1539,164 @@ export default function RequestPage() {
           {/* ---- Модальное окно подтверждения рассылки ---- */}
           {showSendModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-xl shadow-xl p-6 space-y-4 w-full max-w-lg">
+              <div className="bg-white rounded-xl shadow-xl p-6 space-y-4 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
                 <h3 className="text-xl font-semibold">Подтверждение рассылки</h3>
-                <p>Заявка будет отправлена поставщикам по следующим категориям:</p>
-                <ul className="list-disc list-inside bg-gray-50 p-3 rounded-md">
-                  {cats.filter(c => c.saved.length > 0).map(cat => (
-                    <li key={cat.id} className="text-gray-800">{cat.title || 'Прочее'}</li>
+                <p>Выберите, какие категории рассылать, и укажите поставщика для каждой категории.</p>
+
+                {/* Список категорий с чекбоксами и селектом поставщика */}
+                <div className="space-y-3">
+                  {cats.filter(c => c.saved.length > 0).map(cat => {
+                    const enabled = !!sendCategoryEnabled[cat.id];
+                    const options = sendCategoryOptions[cat.id] ?? suppliers;
+
+                    if (cat.kind === 'metal') {
+                      const emailEntries = metalSendConfig[cat.id] || [];
+                      return (
+                        <div key={cat.id} className="flex items-start gap-3 p-3 border rounded-md">
+                          <div className="pt-1">
+                            <input type="checkbox" checked={enabled} onChange={() => setSendCategoryEnabled(prev => ({ ...prev, [cat.id]: !enabled }))} />
+                          </div>
+                          <div className="flex-1 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="font-medium">{cat.title}</div>
+                              <div className="text-sm text-gray-500">{cat.saved.length} позиций</div>
+                            </div>
+                            {emailEntries.map((entry, index) => (
+                              <div key={entry.id} className="p-3 bg-gray-50 rounded-md space-y-3">
+                                <div>
+                                  <label className="text-xs text-gray-600">Поставщик</label>
+                                  <select className={clsInput} value={entry.supplierId ?? ''} onChange={(e) => {
+                                      const supplierId = e.target.value ? Number(e.target.value) : null;
+                                      const supplier = options.find(s => s.id === supplierId);
+                                      updateMetalEmailEntry(cat.id, entry.id, 'supplierId', supplierId);
+                                      updateMetalEmailEntry(cat.id, entry.id, 'email', supplier?.email || '');
+                                    }} disabled={!enabled}>
+                                    <option value=''>Выбрать поставщика...</option>
+                                    {options.map(s => (
+                                      <option key={s.id} value={s.id}>{s.short_name}{s.inn ? ` (ИНН: ${s.inn})` : ''}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+                                  <div>
+                                    <label className="text-xs text-gray-600">E-mail для отправки</label>
+                                    <input
+                                      className={clsInput}
+                                      placeholder="contact@company.ru"
+                                      value={entry.email}
+                                      onChange={(e) => updateMetalEmailEntry(cat.id, entry.id, 'email', e.target.value)}
+                                      disabled={!enabled}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-600">Позиции</label>
+                                    <ItemSelectionDropdown
+                                      items={cat.saved}
+                                      selectedIds={entry.selectedItemIds}
+                                      onSelectionChange={(ids) => updateMetalEmailEntry(cat.id, entry.id, 'selectedItemIds', ids)}
+                                      catKind={cat.kind}
+                                      disabled={!enabled}
+                                    />
+                                  </div>
+                                </div>
+                                {emailEntries.length > 1 && (
+                                  <div className="text-right">
+                                    <button type="button" onClick={() => removeMetalEmail(cat.id, entry.id)} className="text-red-500 text-sm hover:text-red-700" disabled={!enabled}>Удалить</button>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                            <button type="button" onClick={() => addMetalEmail(cat.id)} className="text-sm text-emerald-600 hover:text-emerald-700" disabled={!enabled}>+ Добавить еще email</button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    const selectedSupplierId = sendCategorySupplier[cat.id] ?? null;
+                    return (
+                      <div key={cat.id} className="flex items-start gap-3 p-3 border rounded-md">
+                        <div className="pt-1">
+                          <input type="checkbox" checked={enabled} onChange={() => setSendCategoryEnabled(prev => ({ ...prev, [cat.id]: !enabled }))} />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <div className="font-medium">{cat.title}</div>
+                            <div className="text-sm text-gray-500">{cat.saved.length} позиций</div>
+                          </div>
+                          <div className="mt-2">
+                            <select className={clsInput} value={selectedSupplierId ?? ''} onChange={(e) => {
+                                const supplierId = e.target.value ? Number(e.target.value) : null;
+                                setSendCategorySupplier(prev => ({ ...prev, [cat.id]: supplierId }));
+                                const supplier = options.find(s => s.id === supplierId);
+                                setSendCategoryManual(prev => ({ ...prev, [cat.id]: supplier?.email || '' }));
+                              }} disabled={!enabled}>
+                              <option value=''>Выбрать поставщика...</option>
+                              {options.map(s => (
+                                <option key={s.id} value={s.id}>{s.short_name}{s.inn ? ` (ИНН: ${s.inn})` : ''}</option>
+                              ))}
+                            </select>
+                            <div className="mt-2">
+                                <label className="text-xs text-gray-600">E-mail для отправки</label>
+                                <input
+                                  className={clsInput}
+                                  placeholder="contact@company.ru"
+                                  value={sendCategoryManual[cat.id] ?? ''}
+                                  onChange={(e) => setSendCategoryManual(prev => ({ ...prev, [cat.id]: e.target.value }))}
+                                  disabled={!enabled}
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Email поставщика подставляется автоматически, но вы можете его изменить.</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Preview сообщения */}
+                <div className="border-t pt-4 space-y-4">
+                  <h4 className="font-semibold">Предпросмотр писем</h4>
+                  {emailPreviews.map((preview, index) => (
+                    <div key={index} className="border p-3 rounded-md space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Получатель: <span className="font-normal text-gray-900">{preview.recipients}</span>
+                      </label>
+                      
+                      <div>
+                        <label className="text-xs text-gray-600">Шапка письма</label>
+                        <textarea
+                          className="w-full mt-1 p-2 border border-gray-300 rounded-md text-sm focus:ring-amber-500 focus:border-amber-500"
+                          rows={4}
+                          value={preview.header}
+                          onChange={(e) => handlePreviewChange(index, 'header', e.target.value)}
+                        />
+                      </div>
+
+                      <div className="p-3 border rounded-md bg-gray-50/70">
+                        <p className="text-xs text-gray-600 mb-2">Позиции заявки (нередактируемые)</p>
+                        <div className="max-h-48 overflow-y-auto text-xs">
+                          <PreviewItemsTable items={preview.items} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-gray-600">Подвал письма</label>
+                        <textarea
+                          className="w-full mt-1 p-2 border border-gray-300 rounded-md text-sm focus:ring-amber-500 focus:border-amber-500"
+                          rows={4}
+                          value={preview.footer}
+                          onChange={(e) => handlePreviewChange(index, 'footer', e.target.value)}
+                        />
+                      </div>
+                    </div>
                   ))}
-                  {cats.filter(c => c.saved.length > 0).length === 0 && (
-                    <li className="text-gray-500">Нет сохраненных позиций для отправки.</li>
+                  {emailPreviews.length === 0 && (
+                    <p className="text-sm text-gray-500">Нет выбранных категорий или получателей для отправки.</p>
                   )}
-                </ul>
+                </div>
+
                 <div className="flex gap-3 pt-4 border-t">
-                  <button onClick={sendRequest} disabled={isSubmitting || cats.filter(c => c.saved.length > 0).length === 0} className="px-4 py-2 bg-emerald-600 text-white rounded-md disabled:opacity-50">
+                  <button onClick={sendRequest} disabled={isSubmitting || emailPreviews.length === 0} className="px-4 py-2 bg-emerald-600 text-white rounded-md disabled:opacity-50">
                     {isSubmitting ? 'Отправка...' : 'Отправить'}
                   </button>
                   <button onClick={() => setShowSendModal(false)} disabled={isSubmitting} className="px-4 py-2 border border-gray-300 rounded-md disabled:opacity-50">
@@ -1046,6 +1773,7 @@ export default function RequestPage() {
                               <th className={th}>Марка</th>
                               <th className={th}>Аналоги</th>
                               <th className={th}>Количество</th>
+                              <th className={th}>Ед. изм.</th>
                               <th className={th}>Комментарий</th>
                             </tr>
                           </thead>
@@ -1061,6 +1789,7 @@ export default function RequestPage() {
                                   <td className={td}>{m.stamp || '—'}</td>
                                   <td className={td}>{m.allow_analogs ? 'Да' : 'Нет'}</td>
                                   <td className={td}>{m.quantity ?? '—'}</td>
+                                  <td className={td}>{m.unit || 'шт.'}</td>
                                   <td className={td}>{m.comment || '—'}</td>
                                 </tr>
                               );
@@ -1086,7 +1815,7 @@ export default function RequestPage() {
                                 <tr key={i} className="border-t">
                                   <td className={td}>{g.name}</td>
                                   <td className={td}>{g.dims || '—'}</td>
-                                  <td className={td}>{g.uom || '—'}</td>
+                                  <td className={td}>{g.unit || '—'}</td>
                                   <td className={td}>{g.quantity ?? '—'}</td>
                                   <td className={td}>{g.comment || '—'}</td>
                                 </tr>
@@ -1102,13 +1831,12 @@ export default function RequestPage() {
                   {cat.editors.map(row => (
                     <div key={row._id} className="rounded-lg border border-gray-200 p-4">
                       {cat.kind === 'metal' ? (
-                        <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-8 gap-3">
                           <div>
                             <div className="text-xs text-gray-600 mb-1">Категория (лист, труба)</div>
                             <select className={clsInput}
                               value={(row as MetalRow).mCategory || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'mCategory', e.target.value)}
-                            >
+                              onChange={(e)=>setCell(cat.id, row._id, 'mCategory', e.target.value)}>
                               <option value="">—</option>
                               {opts.categories.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
@@ -1123,8 +1851,7 @@ export default function RequestPage() {
                             <div className="text-xs text-gray-600 mb-1">ГОСТ</div>
                             <select className={clsInput}
                               value={(row as MetalRow).gost || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'gost', e.target.value)}
-                            >
+                              onChange={(e)=>setCell(cat.id, row._id, 'gost', e.target.value)}>
                               <option value="">—</option>
                               {opts.standards.map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
@@ -1133,8 +1860,7 @@ export default function RequestPage() {
                             <div className="text-xs text-gray-600 mb-1">Марка</div>
                             <select className={clsInput}
                               value={(row as MetalRow).grade || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'grade', e.target.value)}
-                            >
+                              onChange={(e)=>setCell(cat.id, row._id, 'grade', e.target.value)}>
                               <option value="">—</option>
                               {opts.grades.map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
@@ -1143,8 +1869,7 @@ export default function RequestPage() {
                             <div className="text-xs text-gray-600 mb-1">Аналоги</div>
                             <select className={clsInput}
                               value={(row as MetalRow).allowAnalogs ? 'Да' : 'Нет'}
-                              onChange={(e)=>setCell(cat.id, row._id,'allowAnalogs', e.target.value === 'Да')}
-                            >
+                              onChange={(e)=>setCell(cat.id, row._id,'allowAnalogs', e.target.value === 'Да')}> 
                               <option>Нет</option>
                               <option>Да</option>
                             </select>
@@ -1154,6 +1879,13 @@ export default function RequestPage() {
                             <input className={clsInput} type="number" min="0" step="any"
                               value={(row as MetalRow).qty || ''}
                               onChange={(e)=>setCell(cat.id, row._id, 'qty', e.target.value)} />
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Ед. изм.</div>
+                            <select className={clsInput} value={(row as MetalRow).unit || ''} onChange={(e) => setCell(cat.id, row._id, 'unit', e.target.value)}>
+                              <option value="">—</option>
+                              {units.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                            </select>
                           </div>
                           <div>
                             <div className="text-xs text-gray-600 mb-1">Комментарий</div>
@@ -1178,9 +1910,10 @@ export default function RequestPage() {
                           </div>
                           <div>
                             <div className="text-xs text-gray-600 mb-1">Ед. изм.</div>
-                            <input className={clsInput}
-                              value={(row as GenericRow).uom || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'uom', e.target.value)} />
+                            <select className={clsInput} value={(row as GenericRow).unit || ''} onChange={(e) => setCell(cat.id, row._id, 'unit', e.target.value)}>
+                              <option value="">—</option>
+                              {units.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                            </select>
                           </div>
                           <div>
                             <div className="text-xs text-gray-600 mb-1">Количество</div>
@@ -1214,7 +1947,7 @@ export default function RequestPage() {
                 </>
               )}
             </div>
-          )))}
+          )))} 
 
           {/* Кнопка добавить категорию — слева */}
           {isLoading ? (
@@ -1223,7 +1956,7 @@ export default function RequestPage() {
               <SkeletonLoader className="h-14 w-52" />
             </div>
           ) : (
-            // --- Реальная кнопка ---
+            // --- Реальная кнопка --- 
             <div className="flex justify-start">
               <button
                 type="button"

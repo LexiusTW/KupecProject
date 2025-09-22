@@ -19,11 +19,16 @@ class Counterparty(Base):
     kpp = Column(String(9), nullable=True)                  # кпп
     okpo = Column(String(10), nullable=True)                # окпо
     okato = Column(String(20), nullable=True)               # окато/октмо
-
-    # Банк
+ 
+        # Банк
     bank_account = Column(String(32), nullable=True)        # расчётный счёт
     bank_bik = Column(String(9), nullable=True)             # БИК
     bank_name = Column(String(255), nullable=True)          # Наименование банка банка
     bank_corr = Column(String(20), nullable=True)           # корр. счёт
+
+    # Новые поля для договора
+    director = Column(String(255), nullable=False)            # Директор
+    phone = Column(String(50), nullable=False)                # Телефон
+    email = Column(String(255), nullable=False)               # Электронная почта
 
     buyer = relationship("Buyer", backref="counterparties")

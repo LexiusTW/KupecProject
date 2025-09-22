@@ -1,8 +1,10 @@
+import copy
 import os
 import sys
 import logging
 import uvicorn
 import psycopg2
+from uvicorn.config import LOGGING_CONFIG
 
 from app.core.config import settings
 
@@ -120,8 +122,15 @@ def main():
     # 2) Если чего-то не хватает — только тогда запускаем миграции
     apply_migrations_if_needed(missing)
 
+    config = copy.deepcopy(LOGGING_CONFIG)
+    config["formatters"]["default"]["fmt"] = "%(asctime)s %(levelname)s %(message)s"
+    config["formatters"]["default"]["datefmt"] = "%Y-%m-%d %H:%M:%S"
+    config["formatters"]["access"]["fmt"] = '%(asctime)s %(levelname)s %(client_addr)s - "%(request_line)s" %(status_code)s'
+    config["formatters"]["access"]["datefmt"] = "%Y-%m-%d %H:%M:%S"
+    
     # 3) Стартуем API
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True, log_config=config)
+    
 
 if __name__ == "__main__":
     main()

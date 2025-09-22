@@ -1,19 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
 
-const publicPaths = ['/login', '/register', '/search', '/request', '/account', '/mail'];
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  const token = request.cookies.get('access_token')?.value;
-  const { pathname } = request.nextUrl;
+  const url = request.nextUrl.clone();
 
-  const isPublicPath = publicPaths.some((p) => pathname.startsWith(p));
+  console.log('Middleware executed for:', url.pathname);
 
-  if (token && isPublicPath) {
-    return NextResponse.redirect(new URL('/search', request.url));
-  }
-
-  if (!token && !isPublicPath) {
-    return NextResponse.redirect(new URL('/login', request.url));
+  if (url.pathname === '/') {
+    url.pathname = '/login';
+    console.log('Redirecting to:', url.pathname);
+    return NextResponse.redirect(url);
   }
 
   return NextResponse.next();
@@ -21,6 +18,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|images|favicon.ico|icon.svg|.*\\.(?:svg|png|jpg|jpeg|gif|webp)).*)',
+    '/',
   ],
 };

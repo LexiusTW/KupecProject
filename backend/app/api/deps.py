@@ -29,12 +29,23 @@ async def get_current_user(
     """
     Достаёт access_token из HttpOnly cookie, валидирует JWT и возвращает текущего пользователя.
     """
-    token: Optional[str] = request.cookies.get("access_token")
-    if not token:
+    user = await get_current_user_optional(request, db)
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing access token",
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
         )
+    return user
+
+
+async def get_current_user_optional(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> Optional[Union[Buyer, Seller]]:
+    token: Optional[str] = request.cookies.get("access_token")
+    if not token:
+        return None
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -61,5 +72,5 @@ async def get_current_user(
     user = holder["user"]
 
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        return None
     return user

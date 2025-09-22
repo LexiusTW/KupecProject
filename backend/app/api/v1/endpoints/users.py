@@ -9,6 +9,10 @@ from app.models.user import Buyer, Seller
 
 router = APIRouter()
 
+class MeOut(BaseModel):
+    id: int
+    role: str
+
 class AddressOut(BaseModel):
     delivery_address: Optional[str] = None
 
@@ -53,6 +57,13 @@ async def get_my_address(
     if isinstance(user, Seller):
         raise HTTPException(status_code=403, detail="Только для покупателей")
     return AddressOut(delivery_address=getattr(user, "delivery_address", None))
+
+@router.get("/users/me", response_model=MeOut, status_code=status.HTTP_200_OK)
+async def get_me(
+    user: Union[Buyer, Seller] = Depends(get_current_user),
+):
+    role = "seller" if hasattr(user, "inn") else "buyer"
+    return MeOut(id=user.id, role=role)
 
 @router.post("/users/me/address", response_model=AddressOut, status_code=status.HTTP_200_OK)
 async def set_my_address_post(
