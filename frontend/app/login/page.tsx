@@ -1,29 +1,24 @@
-'use client';
+"use client";
 
-import AuthForm from '../components/AuthForm';
-import Footer from '../components/Footer';
-import Header from '../components/Header';
+import AuthForm from "../components/shared/AuthForm/AuthForm";
+import Footer from "../components/base/Footer/Footer";
+import Header from "../components/base/Header/Header";
+import { Container } from "../components/base/Container/Container";
+
+import { rc } from "../utils/rc";
+
+import css from "./page.module.css";
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-yellow-100 flex flex-col">
-      <Header />
+    <section className={css.section}>
+      <Container className={css["container-auth"]}>
+        <div className={css.inner}>
+          <h1 className={rc(["h1", css["text-center"]])}>Вход в систему</h1>
 
-      <main className="flex-grow flex items-center justify-center">
-        <div className="container mx-auto px-4 py-8">
-          <div className="max-w-md mx-auto">
-            <div className="text-center mb-8">
-              <h1 className="text-3xl font-bold text-gray-800 mb-2">
-                Вход в систему
-              </h1>
-            </div>
-            <AuthForm />
-          </div>
+          <AuthForm />
         </div>
-      </main>
-
-      <Footer />
-    </div>
+      </Container>
+    </section>
   );
 }
-

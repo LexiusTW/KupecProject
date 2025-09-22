@@ -1,21 +1,21 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import Header from '../components/Header';
-import Footer from '../components/Footer';
-import SkeletonLoader from '../components/SkeletonLoader';
-import Notification, { NotificationProps } from '../components/Notification';
+import { useEffect, useMemo, useRef, useState } from "react";
+import Header from "../components/base/Header/Header";
+import Footer from "../components/base/Footer/Footer";
+import SkeletonLoader from "../components/SkeletonLoader";
+import Notification, { NotificationProps } from "../components/Notification";
 
-const API_BASE_URL = 'https://ekbmetal.cloudpub.ru';
+const API_BASE_URL = "https://ekbmetal.cloudpub.ru";
 
 // ---------------- Types ----------------
-type RowKind = 'metal' | 'generic';
+type RowKind = "metal" | "generic";
 
 type MetalRow = {
   _id: string;
-  kind: 'metal';
+  kind: "metal";
   mCategory?: string; // Категория (лист/труба…)
-  size?: string;      // "1x1x1"
+  size?: string; // "1x1x1"
   gost?: string;
   grade?: string;
   allowAnalogs?: boolean;
@@ -25,10 +25,10 @@ type MetalRow = {
 
 type GenericRow = {
   _id: string;
-  kind: 'generic';
+  kind: "generic";
   name?: string;
-  dims?: string;  // размеры/характеристики
-  uom?: string;   // ед. изм.
+  dims?: string; // размеры/характеристики
+  uom?: string; // ед. изм.
   qty?: string;
   comment?: string;
 };
@@ -42,9 +42,9 @@ type OptionsPack = {
 };
 
 type SavedMetalItem = {
-  kind: 'metal';
+  kind: "metal";
   category?: string | null;
-  size?: string | null;           // показываем в таблице
+  size?: string | null; // показываем в таблице
   state_standard?: string | null;
   stamp?: string | null;
   quantity: number | null;
@@ -53,11 +53,11 @@ type SavedMetalItem = {
 };
 
 type SavedGenericItem = {
-  kind: 'generic';
+  kind: "generic";
   category: string; // пользовательская категория
   name: string;
   dims?: string | null; // размеры/характеристики
-  uom?: string | null;  // ед. изм.
+  uom?: string | null; // ед. изм.
   quantity: number | null;
   comment: string;
 };
@@ -66,11 +66,11 @@ type SavedItem = SavedMetalItem | SavedGenericItem;
 
 type CategoryBlock = {
   id: string;
-  title: string;        // ввод пользователя ("Металлопрокат" или любое другое)
-  kind: RowKind;        // вычисляется из title: "Металлопрокат" => metal, иначе generic
-  editors: Row[];       // незасейвленные позиции
-  saved: SavedItem[];   // сохранённые позиции
-  editingTitle: boolean;// управляет показом инпута / жирного заголовка + "Изменить"
+  title: string; // ввод пользователя ("Металлопрокат" или любое другое)
+  kind: RowKind; // вычисляется из title: "Металлопрокат" => metal, иначе generic
+  editors: Row[]; // незасейвленные позиции
+  saved: SavedItem[]; // сохранённые позиции
+  editingTitle: boolean; // управляет показом инпута / жирного заголовка + "Изменить"
 };
 
 type Counterparty = {
@@ -89,7 +89,7 @@ type Counterparty = {
 };
 
 // Для формы создания, все поля опциональны и строковые
-type CounterpartyCreateForm = Partial<Omit<Counterparty, 'id'>>;
+type CounterpartyCreateForm = Partial<Omit<Counterparty, "id">>;
 
 // Для ошибок валидации формы
 type CounterpartyFormErrors = { [K in keyof CounterpartyCreateForm]?: string };
@@ -107,7 +107,6 @@ type DaDataParty = {
   legal_address?: string;
 };
 
-
 type DaDataAddr = { value: string; unrestricted_value?: string };
 
 type HeaderErrors = {
@@ -118,18 +117,18 @@ type HeaderErrors = {
 };
 
 const clsInput =
-  'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100 disabled:text-gray-500';
+  "w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100 disabled:text-gray-500";
 const clsInputError =
-  'w-full px-3 py-2 border border-red-500 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500';
-const clsBtn = 'px-4 py-2 rounded-md';
-const th = 'px-3 py-2 text-left text-xs font-semibold text-gray-600';
-const td = 'px-3 py-2';
+  "w-full px-3 py-2 border border-red-500 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500";
+const clsBtn = "px-4 py-2 rounded-md";
+const th = "px-3 py-2 text-left text-xs font-semibold text-gray-600";
+const td = "px-3 py-2";
 
 export default function RequestPage() {
   // ---------------- Header fields ----------------
-  const [title, setTitle] = useState('');
-  const [deliveryAt, setDeliveryAt] = useState('');
-  const [address, setAddress] = useState('');
+  const [title, setTitle] = useState("");
+  const [deliveryAt, setDeliveryAt] = useState("");
+  const [address, setAddress] = useState("");
   const [headerErrors, setHeaderErrors] = useState<HeaderErrors>({});
 
   const [isLoading, setIsLoading] = useState(true); // Общее состояние загрузки страницы
@@ -138,24 +137,23 @@ export default function RequestPage() {
   const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
   const [showCpCreateModal, setShowCpCreateModal] = useState(false);
   const [newCpForm, setNewCpForm] = useState<CounterpartyCreateForm>({});
-  const [cpSearchQuery, setCpSearchQuery] = useState('');
+  const [cpSearchQuery, setCpSearchQuery] = useState("");
   const [cpSuggestions, setCpSuggestions] = useState<Counterparty[]>([]);
   const [cpFocus, setCpFocus] = useState(false);
   const [cpFormErrors, setCpFormErrors] = useState<CounterpartyFormErrors>({});
-  const [cpSearchError, setCpSearchError] = useState('');
+  const [cpSearchError, setCpSearchError] = useState("");
   // Состояния для подсказок юр. адреса в модальном окне
-  const [cpAddrQuery, setCpAddrQuery] = useState('');
+  const [cpAddrQuery, setCpAddrQuery] = useState("");
   const [cpAddrSugg, setCpAddrSugg] = useState<DaDataAddr[]>([]);
   const [cpAddrFocus, setCpAddrFocus] = useState(false);
   const [cpAddrLoading, setCpAddrLoading] = useState(false);
   const cpAddrAbort = useRef<AbortController | null>(null);
   // Состояния для поиска контрагента в DaData
-  const [cpDadataQuery, setCpDadataQuery] = useState('');
+  const [cpDadataQuery, setCpDadataQuery] = useState("");
   const [cpDadataSugg, setCpDadataSugg] = useState<DaDataParty[]>([]);
   const [cpDadataFocus, setCpDadataFocus] = useState(false);
   const [cpDadataLoading, setCpDadataLoading] = useState(false);
   const cpDadataAbort = useRef<AbortController | null>(null);
-
 
   // флаги сохранения адреса
   const [addressSaved, setAddressSaved] = useState(true);
@@ -163,7 +161,7 @@ export default function RequestPage() {
   const [addrLoading, setAddrLoading] = useState(false);
 
   // DaData
-  const [addrQuery, setAddrQuery] = useState('');
+  const [addrQuery, setAddrQuery] = useState("");
   const [addrSugg, setAddrSugg] = useState<DaDataAddr[]>([]);
   const [addrFocus, setAddrFocus] = useState(false); // показываем подсказки только при фокусе
   const addrAbort = useRef<AbortController | null>(null);
@@ -183,33 +181,54 @@ export default function RequestPage() {
   // ---------------- UI State ----------------
   const [showSendModal, setShowSendModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [notifications, setNotifications] = useState<Omit<NotificationProps, 'onDismiss'>[]>([]);
+  const [notifications, setNotifications] = useState<
+    Omit<NotificationProps, "onDismiss">[]
+  >([]);
 
-  const addNotification = (notif: Omit<NotificationProps, 'id' | 'onDismiss'>) => {
+  const addNotification = (
+    notif: Omit<NotificationProps, "id" | "onDismiss">
+  ) => {
     const id = crypto.randomUUID();
-    setNotifications(prev => [...prev, { id, ...notif }]);
+    setNotifications((prev) => [...prev, { id, ...notif }]);
   };
 
-  const removeNotification = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
+  const removeNotification = (id: string) =>
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
   // ------- Init: address from profile & options -------
   useEffect(() => {
     const loadInitialData = async () => {
       setIsLoading(true);
       try {
         // Запускаем все запросы параллельно
-        const [addressRes, counterpartiesRes, categoriesRes, stampsRes, gostsRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/v1/users/me/address`, { credentials: 'include' }).catch(() => null),
-          fetch(`${API_BASE_URL}/api/v1/counterparties`, { credentials: 'include' }).catch(() => null),
-          fetch(`${API_BASE_URL}/api/v1/categories`, { credentials: 'include' }).catch(() => null),
-          fetch(`${API_BASE_URL}/api/v1/stamps`, { credentials: 'include' }).catch(() => null),
-          fetch(`${API_BASE_URL}/api/v1/gosts`, { credentials: 'include' }).catch(() => null),
+        const [
+          addressRes,
+          counterpartiesRes,
+          categoriesRes,
+          stampsRes,
+          gostsRes,
+        ] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/v1/users/me/address`, {
+            credentials: "include",
+          }).catch(() => null),
+          fetch(`${API_BASE_URL}/api/v1/counterparties`, {
+            credentials: "include",
+          }).catch(() => null),
+          fetch(`${API_BASE_URL}/api/v1/categories`, {
+            credentials: "include",
+          }).catch(() => null),
+          fetch(`${API_BASE_URL}/api/v1/stamps`, {
+            credentials: "include",
+          }).catch(() => null),
+          fetch(`${API_BASE_URL}/api/v1/gosts`, {
+            credentials: "include",
+          }).catch(() => null),
         ]);
 
         // Обрабатываем результаты
         if (addressRes && addressRes.ok) {
           const data = await addressRes.json();
           if (data?.delivery_address !== undefined) {
-            setAddress(data.delivery_address || '');
+            setAddress(data.delivery_address || "");
             setAddressSaved(true);
           }
         }
@@ -229,7 +248,6 @@ export default function RequestPage() {
           grades: stpData ?? [],
           standards: gstData ?? [],
         });
-
       } catch (error) {
         console.error("Failed to load initial data:", error);
       } finally {
@@ -243,12 +261,18 @@ export default function RequestPage() {
   // ------- helpers -------
   const fetchSuggest = async (q: string) => {
     // кэш по префиксу: ищем самое длинное совпадение
-    const keys = Array.from(addrCache.current.keys()).sort((a,b)=>b.length-a.length);
-    const cachedKey = keys.find(k => q.startsWith(k));
+    const keys = Array.from(addrCache.current.keys()).sort(
+      (a, b) => b.length - a.length
+    );
+    const cachedKey = keys.find((k) => q.startsWith(k));
     if (cachedKey) {
       const cached = addrCache.current.get(cachedKey)!;
       // фильтруем под текущий запрос
-      const f = cached.filter(s => (s.unrestricted_value || s.value).toLowerCase().includes(q.toLowerCase()));
+      const f = cached.filter((s) =>
+        (s.unrestricted_value || s.value)
+          .toLowerCase()
+          .includes(q.toLowerCase())
+      );
       if (f.length) return f;
     }
 
@@ -256,10 +280,19 @@ export default function RequestPage() {
     addrAbort.current = new AbortController();
     setAddrLoading(true);
     try {
-      const url = `${API_BASE_URL}/api/v1/suggest/address?q=${encodeURIComponent(q)}&count=7`;
-      const r = await fetch(url, { credentials: 'include', signal: addrAbort.current.signal, keepalive: true as any });
+      const url = `${API_BASE_URL}/api/v1/suggest/address?q=${encodeURIComponent(
+        q
+      )}&count=7`;
+      const r = await fetch(url, {
+        credentials: "include",
+        signal: addrAbort.current.signal,
+        keepalive: true as any,
+      });
       const data = await r.json();
-      const list: DaDataAddr[] = (data?.suggestions ?? []).map((s:any)=>({ value: s.value, unrestricted_value: s.unrestricted_value }));
+      const list: DaDataAddr[] = (data?.suggestions ?? []).map((s: any) => ({
+        value: s.value,
+        unrestricted_value: s.unrestricted_value,
+      }));
       addrCache.current.set(q, list);
       return list;
     } catch {
@@ -272,11 +305,17 @@ export default function RequestPage() {
   // ------- DaData helpers для юр. адреса (аналогично основному) -------
   const fetchCpSuggest = async (q: string) => {
     // Используем тот же кэш, что и для основного адреса
-    const keys = Array.from(addrCache.current.keys()).sort((a,b)=>b.length-a.length);
-    const cachedKey = keys.find(k => q.startsWith(k));
+    const keys = Array.from(addrCache.current.keys()).sort(
+      (a, b) => b.length - a.length
+    );
+    const cachedKey = keys.find((k) => q.startsWith(k));
     if (cachedKey) {
       const cached = addrCache.current.get(cachedKey)!;
-      const f = cached.filter(s => (s.unrestricted_value || s.value).toLowerCase().includes(q.toLowerCase()));
+      const f = cached.filter((s) =>
+        (s.unrestricted_value || s.value)
+          .toLowerCase()
+          .includes(q.toLowerCase())
+      );
       if (f.length) return f;
     }
 
@@ -284,14 +323,25 @@ export default function RequestPage() {
     cpAddrAbort.current = new AbortController();
     setCpAddrLoading(true);
     try {
-      const url = `${API_BASE_URL}/api/v1/suggest/address?q=${encodeURIComponent(q)}&count=5`;
-      const r = await fetch(url, { credentials: 'include', signal: cpAddrAbort.current.signal });
+      const url = `${API_BASE_URL}/api/v1/suggest/address?q=${encodeURIComponent(
+        q
+      )}&count=5`;
+      const r = await fetch(url, {
+        credentials: "include",
+        signal: cpAddrAbort.current.signal,
+      });
       const data = await r.json();
-      const list: DaDataAddr[] = (data?.suggestions ?? []).map((s:any)=>({ value: s.value, unrestricted_value: s.unrestricted_value }));
+      const list: DaDataAddr[] = (data?.suggestions ?? []).map((s: any) => ({
+        value: s.value,
+        unrestricted_value: s.unrestricted_value,
+      }));
       addrCache.current.set(q, list); // Пополняем общий кэш
       return list;
-    } catch { return []; }
-    finally { setCpAddrLoading(false); }
+    } catch {
+      return [];
+    } finally {
+      setCpAddrLoading(false);
+    }
   };
 
   // ------- DaData helpers для поиска организаций -------
@@ -300,8 +350,13 @@ export default function RequestPage() {
     cpDadataAbort.current = new AbortController();
     setCpDadataLoading(true);
     try {
-      const url = `${API_BASE_URL}/api/v1/suggest/party?q=${encodeURIComponent(q)}&count=5`;
-      const r = await fetch(url, { credentials: 'include', signal: cpDadataAbort.current.signal });
+      const url = `${API_BASE_URL}/api/v1/suggest/party?q=${encodeURIComponent(
+        q
+      )}&count=5`;
+      const r = await fetch(url, {
+        credentials: "include",
+        signal: cpDadataAbort.current.signal,
+      });
       if (!r.ok) return [];
       const data = await r.json();
       return (data?.suggestions ?? []) as DaDataParty[];
@@ -314,7 +369,10 @@ export default function RequestPage() {
 
   useEffect(() => {
     const q = cpDadataQuery.trim();
-    if (!cpDadataFocus || q.length < 2) { if (!cpDadataFocus) setCpDadataSugg([]); return; }
+    if (!cpDadataFocus || q.length < 2) {
+      if (!cpDadataFocus) setCpDadataSugg([]);
+      return;
+    }
 
     const t = setTimeout(() => fetchPartySuggest(q).then(setCpDadataSugg), 300);
     return () => clearTimeout(t);
@@ -322,7 +380,10 @@ export default function RequestPage() {
   // ------- Address suggestions via backend (debounce 100ms + cancel + cache + prefetch on focus) -------
   useEffect(() => {
     const q = addrQuery.trim();
-    if (!addrFocus || q.length < 3) { if (!addrFocus) setAddrSugg([]); return; }
+    if (!addrFocus || q.length < 3) {
+      if (!addrFocus) setAddrSugg([]);
+      return;
+    }
 
     const t = setTimeout(async () => {
       const list = await fetchSuggest(q);
@@ -334,7 +395,7 @@ export default function RequestPage() {
   // prefetch на фокусе, если текст уже есть
   useEffect(() => {
     if (addrFocus) {
-      const q = (address || '').trim();
+      const q = (address || "").trim();
       if (q.length >= 3) {
         fetchSuggest(q).then(setAddrSugg);
       }
@@ -344,7 +405,10 @@ export default function RequestPage() {
   // ------- CP Address suggestions (debounce 100ms) -------
   useEffect(() => {
     const q = cpAddrQuery.trim();
-    if (!cpAddrFocus || q.length < 3) { if (!cpAddrFocus) setCpAddrSugg([]); return; }
+    if (!cpAddrFocus || q.length < 3) {
+      if (!cpAddrFocus) setCpAddrSugg([]);
+      return;
+    }
 
     const t = setTimeout(async () => {
       const list = await fetchCpSuggest(q);
@@ -358,22 +422,24 @@ export default function RequestPage() {
   const persistAddress = async (value: string) => {
     try {
       const r = await fetch(`${API_BASE_URL}/api/v1/users/me/address`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ delivery_address: value }),
       });
-    setAddrLoading(false); // Снимаем состояние загрузки после ответа
+      setAddrLoading(false); // Снимаем состояние загрузки после ответа
       if (r.ok) {
         setAddressSaved(true);
         setAddress(value); // Убедимся, что состояние address соответствует сохраненному
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   const onPickAddress = (val: string) => {
     setAddress(val);
-    setAddrQuery('');
+    setAddrQuery("");
     setAddrSugg([]);
     setAddressSaved(false); // Адрес изменен, теперь его нужно сохранить
   };
@@ -390,8 +456,8 @@ export default function RequestPage() {
   };
 
   const clearAddress = async () => {
-    setAddress('');
-    setAddrQuery(''); // Очищаем запрос для подсказок
+    setAddress("");
+    setAddrQuery(""); // Очищаем запрос для подсказок
     setAddrSugg([]); // Очищаем подсказки
     setAddressSaved(false); // Поле очищено, теперь его нужно сохранить (пустым)
   };
@@ -399,36 +465,46 @@ export default function RequestPage() {
   // ------- Counterparty helpers -------
   const validateCpForm = (): boolean => {
     const errors: CounterpartyFormErrors = {};
-    if (!newCpForm.short_name || newCpForm.short_name.length < 2) errors.short_name = 'Обязательное поле';
-    if (!newCpForm.legal_address || newCpForm.legal_address.length < 3) errors.legal_address = 'Обязательное поле';
+    if (!newCpForm.short_name || newCpForm.short_name.length < 2)
+      errors.short_name = "Обязательное поле";
+    if (!newCpForm.legal_address || newCpForm.legal_address.length < 3)
+      errors.legal_address = "Обязательное поле";
     if (!newCpForm.inn) {
-      errors.inn = 'Обязательное поле';
+      errors.inn = "Обязательное поле";
     } else if (!/^\d{10}(\d{2})?$/.test(newCpForm.inn)) {
-      errors.inn = 'ИНН должен состоять из 10 или 12 цифр';
+      errors.inn = "ИНН должен состоять из 10 или 12 цифр";
     }
 
     // Необязательные поля, но если заполнены - валидируем
-    if (newCpForm.ogrn && !/^\d{13}(\d{2})?$/.test(newCpForm.ogrn)) errors.ogrn = '13 или 15 цифр';
-    if (newCpForm.kpp && !/^\d{9}$/.test(newCpForm.kpp)) errors.kpp = '9 цифр';
-    if (newCpForm.okpo && !/^\d{8}(\d{2})?$/.test(newCpForm.okpo)) errors.okpo = '8 или 10 цифр';
-    if (newCpForm.bank_account && !/^\d{20}$/.test(newCpForm.bank_account)) errors.bank_account = '20 цифр';
-    if (newCpForm.bank_bik && !/^\d{9}$/.test(newCpForm.bank_bik)) errors.bank_bik = '9 цифр';
-    if (newCpForm.bank_corr && !/^\d{20}$/.test(newCpForm.bank_corr)) errors.bank_corr = '20 цифр';
+    if (newCpForm.ogrn && !/^\d{13}(\d{2})?$/.test(newCpForm.ogrn))
+      errors.ogrn = "13 или 15 цифр";
+    if (newCpForm.kpp && !/^\d{9}$/.test(newCpForm.kpp)) errors.kpp = "9 цифр";
+    if (newCpForm.okpo && !/^\d{8}(\d{2})?$/.test(newCpForm.okpo))
+      errors.okpo = "8 или 10 цифр";
+    if (newCpForm.bank_account && !/^\d{20}$/.test(newCpForm.bank_account))
+      errors.bank_account = "20 цифр";
+    if (newCpForm.bank_bik && !/^\d{9}$/.test(newCpForm.bank_bik))
+      errors.bank_bik = "9 цифр";
+    if (newCpForm.bank_corr && !/^\d{20}$/.test(newCpForm.bank_corr))
+      errors.bank_corr = "20 цифр";
 
     setCpFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const handleCpFormChange = (field: keyof CounterpartyCreateForm, value: string) => {
+  const handleCpFormChange = (
+    field: keyof CounterpartyCreateForm,
+    value: string
+  ) => {
     // Очищаем ошибку для поля, которое пользователь редактирует
     if (cpFormErrors[field]) {
-      setCpFormErrors(prev => {
+      setCpFormErrors((prev) => {
         const next = { ...prev };
         delete next[field];
         return next;
       });
     }
-    setNewCpForm(p => ({ ...p, [field]: value }));
+    setNewCpForm((p) => ({ ...p, [field]: value }));
   };
 
   const handleCreateCounterparty = async () => {
@@ -438,52 +514,56 @@ export default function RequestPage() {
 
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/counterparties`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', },
-        credentials: 'include',
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(newCpForm),
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.detail || 'Не удалось создать контрагента');
+        throw new Error(err.detail || "Не удалось создать контрагента");
       }
       const createdCp: Counterparty = await res.json();
-      setCounterparties(prev => [...prev, createdCp]);
+      setCounterparties((prev) => [...prev, createdCp]);
       setSelectedCp(createdCp);
       setShowCpCreateModal(false);
       setNewCpForm({}); // Сбрасываем форму после успеха
-      setCpSearchQuery('');
-      setCpSearchError('');
+      setCpSearchQuery("");
+      setCpSearchError("");
     } catch (e: any) {
-      addNotification({ type: 'error', title: 'Ошибка создания контрагента', message: e.message });
+      addNotification({
+        type: "error",
+        title: "Ошибка создания контрагента",
+        message: e.message,
+      });
     }
   };
 
   const handlePickDadataParty = (party: DaDataParty) => {
     // Заполняем всю форму данными из DaData
     setNewCpForm({
-      short_name: party.short_name || '',
-      legal_address: party.legal_address || '',
-      inn: party.inn || '',
-      kpp: party.kpp || '',
-      ogrn: party.ogrn || '',
-      okpo: party.okpo || '',
-      okato: party.okato || '',
+      short_name: party.short_name || "",
+      legal_address: party.legal_address || "",
+      inn: party.inn || "",
+      kpp: party.kpp || "",
+      ogrn: party.ogrn || "",
+      okpo: party.okpo || "",
+      okato: party.okato || "",
     });
     setCpDadataSugg([]);
-    setCpDadataQuery('');
+    setCpDadataQuery("");
     setCpFormErrors({}); // Сбрасываем ошибки, т.к. заполнили заново
   };
 
   const handlePickCpAddress = (val: string) => {
-    handleCpFormChange('legal_address', val);
+    handleCpFormChange("legal_address", val);
     setCpAddrQuery(val);
     setCpAddrSugg([]);
   };
 
   const handleSelectCp = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
-    const cp = counterparties.find(c => c.id === Number(val));
+    const cp = counterparties.find((c) => c.id === Number(val));
     if (cp) {
       setSelectedCp(cp);
       setCpSearchQuery(`${cp.short_name} (ИНН: ${cp.inn})`);
@@ -495,105 +575,156 @@ export default function RequestPage() {
   useEffect(() => {
     if (cpSearchQuery.length > 1 && cpFocus) {
       const query = cpSearchQuery.toLowerCase();
-      setCpSuggestions(counterparties.filter(cp => cp.short_name.toLowerCase().includes(query) || cp.inn.includes(query)));
+      setCpSuggestions(
+        counterparties.filter(
+          (cp) =>
+            cp.short_name.toLowerCase().includes(query) ||
+            cp.inn.includes(query)
+        )
+      );
     } else {
       setCpSuggestions([]);
     }
   }, [cpSearchQuery, counterparties, cpFocus]);
   // ------- Category helpers -------
   const addCategory = () =>
-    setCats(cs => [
+    setCats((cs) => [
       ...cs,
-      { id: crypto.randomUUID(), title: '', kind: 'generic', editors: [], saved: [], editingTitle: true }
+      {
+        id: crypto.randomUUID(),
+        title: "",
+        kind: "generic",
+        editors: [],
+        saved: [],
+        editingTitle: true,
+      },
     ]);
 
   const finalizeCategoryTitle = (cid: string, title: string) => {
-    setCats(cs => cs.map(c => {
-      if (c.id !== cid) return c;
-      const normalized = title.trim().toLowerCase();
-      const nextKind: RowKind = normalized === 'металлопрокат' ? 'metal' : 'generic';
-      return { ...c, title, kind: nextKind, editingTitle: false, editors: [] };
-    }));
+    setCats((cs) =>
+      cs.map((c) => {
+        if (c.id !== cid) return c;
+        const normalized = title.trim().toLowerCase();
+        const nextKind: RowKind =
+          normalized === "металлопрокат" ? "metal" : "generic";
+        return {
+          ...c,
+          title,
+          kind: nextKind,
+          editingTitle: false,
+          editors: [],
+        };
+      })
+    );
   };
 
   const reopenCategoryTitle = (cid: string) =>
-    setCats(cs => cs.map(c => c.id === cid ? { ...c, editingTitle: true } : c));
+    setCats((cs) =>
+      cs.map((c) => (c.id === cid ? { ...c, editingTitle: true } : c))
+    );
 
   const addPosition = (cid: string) =>
-    setCats(cs => cs.map(c => c.id === cid ? { ...c, editors: [...c.editors, blankRow(c.kind)] } : c));
+    setCats((cs) =>
+      cs.map((c) =>
+        c.id === cid ? { ...c, editors: [...c.editors, blankRow(c.kind)] } : c
+      )
+    );
 
   const setCell = (cid: string, rid: string, key: string, val: any) =>
-    setCats(cs => cs.map(c => {
-      if (c.id !== cid) return c;
-      return { ...c, editors: c.editors.map(r => r._id === rid ? ({ ...r, [key]: val }) as Row : r) };
-    }));
+    setCats((cs) =>
+      cs.map((c) => {
+        if (c.id !== cid) return c;
+        return {
+          ...c,
+          editors: c.editors.map((r) =>
+            r._id === rid ? ({ ...r, [key]: val } as Row) : r
+          ),
+        };
+      })
+    );
 
   const removeEditorRow = (cid: string, rid: string) =>
-    setCats(cs => cs.map(c => c.id === cid ? { ...c, editors: c.editors.filter(r => r._id !== rid) } : c));
+    setCats((cs) =>
+      cs.map((c) =>
+        c.id === cid
+          ? { ...c, editors: c.editors.filter((r) => r._id !== rid) }
+          : c
+      )
+    );
 
   function blankRow(kind: RowKind): Row {
-    return kind === 'metal'
-      ? ({ _id: crypto.randomUUID(), kind: 'metal' } as MetalRow)
-      : ({ _id: crypto.randomUUID(), kind: 'generic' } as GenericRow);
+    return kind === "metal"
+      ? ({ _id: crypto.randomUUID(), kind: "metal" } as MetalRow)
+      : ({ _id: crypto.randomUUID(), kind: "generic" } as GenericRow);
   }
 
   // ------- Save single position into category.saved (and hide editor row) -------
   const savePosition = (cid: string, rid: string) =>
-    setCats(cs => cs.map(c => {
-      if (c.id !== cid) return c;
-      const row = c.editors.find(r => r._id === rid);
-      if (!row) return c;
-      let item: SavedItem | null = null;
+    setCats((cs) =>
+      cs.map((c) => {
+        if (c.id !== cid) return c;
+        const row = c.editors.find((r) => r._id === rid);
+        if (!row) return c;
+        let item: SavedItem | null = null;
 
-      if (c.kind === 'metal') {
-        const m = row as MetalRow;
-        if (!m.mCategory || !m.qty) {
-          addNotification({ type: 'warning', title: 'Неполные данные', message: 'Для металлопроката укажите Категорию и Количество.' });
-          return c;
+        if (c.kind === "metal") {
+          const m = row as MetalRow;
+          if (!m.mCategory || !m.qty) {
+            addNotification({
+              type: "warning",
+              title: "Неполные данные",
+              message: "Для металлопроката укажите Категорию и Количество.",
+            });
+            return c;
+          }
+          item = {
+            kind: "metal",
+            category: m.mCategory || null,
+            size: m.size || null,
+            state_standard: m.gost || null,
+            stamp: m.grade || null,
+            quantity: m.qty ? Number(m.qty) : null,
+            allow_analogs: !!m.allowAnalogs,
+            comment: m.comment || null,
+          };
+        } else {
+          const g = row as GenericRow;
+          if (!g.name || !g.qty) {
+            addNotification({
+              type: "warning",
+              title: "Неполные данные",
+              message: "Для прочей позиции укажите Наименование и Количество.",
+            });
+            return c;
+          }
+          item = {
+            kind: "generic",
+            category: c.title?.trim() || "Прочее", // пользовательская категория
+            name: g.name || "",
+            dims: g.dims || null,
+            uom: g.uom || null,
+            quantity: g.qty ? Number(g.qty) : null,
+            comment: g.comment || "",
+          };
         }
-        item = {
-          kind: 'metal',
-          category: m.mCategory || null,
-          size: m.size || null,
-          state_standard: m.gost || null,
-          stamp: m.grade || null,
-          quantity: m.qty ? Number(m.qty) : null,
-          allow_analogs: !!m.allowAnalogs,
-          comment: m.comment || null,
-        };
-      } else {
-        const g = row as GenericRow;
-        if (!g.name || !g.qty) {
-          addNotification({ type: 'warning', title: 'Неполные данные', message: 'Для прочей позиции укажите Наименование и Количество.' });
-          return c;
-        }
-        item = {
-          kind: 'generic',
-          category: c.title?.trim() || 'Прочее', // пользовательская категория
-          name: g.name || '',
-          dims: g.dims || null,
-          uom: g.uom || null,
-          quantity: g.qty ? Number(g.qty) : null,
-          comment: g.comment || '',
-        };
-      }
 
-      return {
-        ...c,
-        saved: [...c.saved, item!],
-        editors: c.editors.filter(r => r._id !== rid)
-      };
-    }));
+        return {
+          ...c,
+          saved: [...c.saved, item!],
+          editors: c.editors.filter((r) => r._id !== rid),
+        };
+      })
+    );
 
   // ------- Whole request save -------
-  const allSavedItems = useMemo(() => cats.flatMap(c => c.saved), [cats]);
+  const allSavedItems = useMemo(() => cats.flatMap((c) => c.saved), [cats]);
 
   const validateHeader = (): boolean => {
     const errors: HeaderErrors = {};
-    if (!title.trim()) errors.title = 'Название заявки обязательно';
-    if (!deliveryAt) errors.deliveryAt = 'Дата и время обязательны';
-    if (!address.trim()) errors.address = 'Адрес поставки обязателен';
-    if (!selectedCp) errors.counterparty = 'Контрагент обязателен';
+    if (!title.trim()) errors.title = "Название заявки обязательно";
+    if (!deliveryAt) errors.deliveryAt = "Дата и время обязательны";
+    if (!address.trim()) errors.address = "Адрес поставки обязателен";
+    if (!selectedCp) errors.counterparty = "Контрагент обязателен";
 
     setHeaderErrors(errors);
     return Object.keys(errors).length === 0;
@@ -605,22 +736,34 @@ export default function RequestPage() {
     const isHeaderValid = validateHeader();
 
     if (!allSavedItems.length) {
-      addNotification({ type: 'warning', title: 'Пустая заявка', message: 'Добавьте и сохраните хотя бы одну позицию, чтобы продолжить.' });
+      addNotification({
+        type: "warning",
+        title: "Пустая заявка",
+        message: "Добавьте и сохраните хотя бы одну позицию, чтобы продолжить.",
+      });
       if (!isHeaderValid) {
-        addNotification({ type: 'warning', title: 'Неполные данные', message: 'Заполните обязательные поля в шапке заявки.' });
+        addNotification({
+          type: "warning",
+          title: "Неполные данные",
+          message: "Заполните обязательные поля в шапке заявки.",
+        });
       }
       return null; // Возвращаем null, если валидация не пройдена или нет позиций
     }
     if (!isHeaderValid) {
-      addNotification({ type: 'warning', title: 'Неполные данные', message: 'Заполните обязательные поля в шапке заявки.' });
+      addNotification({
+        type: "warning",
+        title: "Неполные данные",
+        message: "Заполните обязательные поля в шапке заявки.",
+      });
       return null; // Возвращаем null, если валидация не пройдена
     }
     setIsSubmitting(true);
     try {
       const r = await fetch(`${API_BASE_URL}/api/v1/requests`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           items: allSavedItems,
           comment: title?.trim() || null,
@@ -631,14 +774,22 @@ export default function RequestPage() {
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
-        throw new Error(err.detail || 'Не удалось сохранить заявку');
+        throw new Error(err.detail || "Не удалось сохранить заявку");
       }
       const savedRequest: Request = await r.json();
-      addNotification({ type: 'success', title: 'Заявка сохранена', message: 'Ее можно посмотреть в Личном кабинете.' });
-      
+      addNotification({
+        type: "success",
+        title: "Заявка сохранена",
+        message: "Ее можно посмотреть в Личном кабинете.",
+      });
+
       return savedRequest; // Возвращаем сохраненную заявку
-    } catch (e:any) {
-      addNotification({ type: 'error', title: 'Ошибка сохранения', message: e.message || 'Произошла неизвестная ошибка.' });
+    } catch (e: any) {
+      addNotification({
+        type: "error",
+        title: "Ошибка сохранения",
+        message: e.message || "Произошла неизвестная ошибка.",
+      });
       return null;
     } finally {
       setIsSubmitting(false);
@@ -654,26 +805,37 @@ export default function RequestPage() {
 
     setIsSubmitting(true);
     try {
-      const sendRes = await fetch(`${API_BASE_URL}/api/v1/requests/${(savedRequest as any).id}/send`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      const sendRes = await fetch(
+        `${API_BASE_URL}/api/v1/requests/${(savedRequest as any).id}/send`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
 
       if (!sendRes.ok) {
         const err = await sendRes.json().catch(() => ({}));
-        throw new Error(err.detail || 'Не удалось разослать заявку');
+        throw new Error(err.detail || "Не удалось разослать заявку");
       }
 
-      addNotification({ type: 'success', title: 'Заявка отправлена', message: 'Она сохранена в папке "Отправленные".' });
+      addNotification({
+        type: "success",
+        title: "Заявка отправлена",
+        message: 'Она сохранена в папке "Отправленные".',
+      });
 
       // Очищаем форму после полной отправки
       setCats([]);
-      setTitle('');
-      setDeliveryAt('');
+      setTitle("");
+      setDeliveryAt("");
       setSelectedCp(null);
-      setCpSearchQuery('');
+      setCpSearchQuery("");
     } catch (e: any) {
-      addNotification({ type: 'error', title: 'Ошибка отправки', message: e.message });
+      addNotification({
+        type: "error",
+        title: "Ошибка отправки",
+        message: e.message,
+      });
     } finally {
       setIsSubmitting(false);
       setShowSendModal(false);
@@ -682,314 +844,608 @@ export default function RequestPage() {
 
   // ---------------- Render ----------------
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-yellow-100 flex flex-col">
-      <Header />
+    <>
+      {/* ---- Контейнер для уведомлений ---- */}
+      <div className="fixed top-24 right-5 z-50 w-full max-w-sm space-y-3">
+        {notifications.map((notif) => (
+          <Notification
+            key={notif.id}
+            {...notif}
+            onDismiss={removeNotification}
+          />
+        ))}
+      </div>
 
-      <main className="flex-grow">
-        {/* ---- Контейнер для уведомлений ---- */}
-        <div className="fixed top-24 right-5 z-50 w-full max-w-sm space-y-3">
-          {notifications.map(notif => (
-            <Notification key={notif.id} {...notif} onDismiss={removeNotification} />
-          ))}
-        </div>
-
-        <div className="container mx-auto px-4 py-8 space-y-6">
-
-          {/* ---- Шапка заявки ---- */}
-          <div className="bg-white rounded-xl shadow p-5">
-            {isLoading ? (
-              // --- Скелетон для шапки ---
-              <>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                  <div className="space-y-1"><SkeletonLoader className="h-5 w-32" /><SkeletonLoader className="h-10 w-full" /></div>
-                  <div className="space-y-1"><SkeletonLoader className="h-5 w-40" /><SkeletonLoader className="h-10 w-full" /></div>
-                  <div className="space-y-1"><SkeletonLoader className="h-5 w-28" /><SkeletonLoader className="h-10 w-full" /></div>
-                  <div className="space-y-1"><SkeletonLoader className="h-5 w-24" /><SkeletonLoader className="h-10 w-full" /></div>
+      <div className="container mx-auto px-4 py-8 space-y-6">
+        {/* ---- Шапка заявки ---- */}
+        <div className="bg-white rounded-xl shadow p-5">
+          {isLoading ? (
+            // --- Скелетон для шапки ---
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <SkeletonLoader className="h-5 w-32" />
+                  <SkeletonLoader className="h-10 w-full" />
                 </div>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <SkeletonLoader className="h-10 w-28" />
-                  <SkeletonLoader className="h-10 w-28" />
+                <div className="space-y-1">
+                  <SkeletonLoader className="h-5 w-40" />
+                  <SkeletonLoader className="h-10 w-full" />
                 </div>
-              </>
-            ) : (
-              // --- Реальный контент шапки ---
-              <>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                  <div className="lg:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Название заявки*</label>
-                    <input
-                      className={headerErrors.title ? clsInputError : clsInput}
-                      value={title}
-                      onChange={(e) => { setTitle(e.target.value); if (headerErrors.title) setHeaderErrors(p => ({ ...p, title: undefined })); }}
-                      placeholder="Например: Поставка на объект А"
-                    />
-                    {headerErrors.title && <p className="text-xs text-red-600 mt-1">{headerErrors.title}</p>}
-                  </div>
-                  <div className="lg:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Дата и время поставки*</label>
-                    <input
-                      type="datetime-local"
-                      className={headerErrors.deliveryAt ? clsInputError : clsInput}
-                      value={deliveryAt}
-                      onChange={(e) => { setDeliveryAt(e.target.value); if (headerErrors.deliveryAt) setHeaderErrors(p => ({ ...p, deliveryAt: undefined })); }}
-                    />
-                    {headerErrors.deliveryAt && <p className="text-xs text-red-600 mt-1">{headerErrors.deliveryAt}</p>}
-                  </div>
-
-                  {/* Адрес */}
-                  <div className="lg:col-span-1 relative">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Адрес поставки</label>
-                    <div className="flex gap-2 items-center">
-                      <div className="relative flex-1">
-                        <input
-                          className={`${headerErrors.address ? clsInputError : clsInput} w-full`}
-                          value={address}
-                          onFocus={()=>{ setAddrFocus(true); setAddrQuery(address); }}
-                          onBlur={onBlurAddress}
-                          onChange={(e)=>{ setAddress(e.target.value); setAddrQuery(e.target.value); setAddressSaved(false); if (headerErrors.address) setHeaderErrors(p => ({ ...p, address: undefined })); }}
-                          placeholder="Начните вводить адрес..."
-                          disabled={addressSaved && address.length > 0} // Поле disabled, если адрес сохранен и не пуст
-                        />
-                        {headerErrors.address && <p className="text-xs text-red-600 mt-1">{headerErrors.address}</p>}
-                        {addrFocus && addrSugg.length > 0 && (
-                          <div className="absolute z-20 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
-                            {addrSugg.map((s, i) => (
-                              <button
-                                type="button"
-                                key={i}
-                                onMouseDown={() => onPickAddress(s.unrestricted_value || s.value)}
-                                className="block w-full text-left px-3 py-2 hover:bg-amber-50"
-                              >
-                                {s.unrestricted_value || s.value}
-                              </button>
-                            ))}
-                            {addrLoading && <div className="px-3 py-2 text-xs text-gray-500">Загрузка...</div>}
-                            {addrSugg.length === 0 && !addrLoading && addrQuery.length >= 3 && <div className="px-3 py-2 text-xs text-gray-500">Ничего не найдено</div>}
-                          </div>
-                        )}
-                      </div>
-
-                      {addressSaved && address.length > 0 ? (
-                        <button type="button" onClick={clearAddress} className="px-3 py-2 border border-gray-300 rounded-md whitespace-nowrap">Очистить</button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={onSaveAddressClick}
-                          className={`px-3 py-2 rounded-md whitespace-nowrap ${address.trim().length === 0 ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-amber-600 text-white'}`}
-                          disabled={address.trim().length === 0 || addrLoading}
-                        >
-                          {addrLoading ? 'Сохранение...' : 'Сохранить'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* ---- Блок выбора контрагента ---- */}
-                  <div className="lg:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Контрагент*</label>
-                    <div className="flex items-start gap-3">
-                      <div className="relative flex-grow">
-                        <input
-                          className={headerErrors.counterparty ? clsInputError : clsInput}
-                          placeholder="Начните вводить ИНН или название для поиска..."
-                          value={cpSearchQuery}
-                          onChange={e => { setCpSearchQuery(e.target.value); setSelectedCp(null); if (headerErrors.counterparty) setHeaderErrors(p => ({ ...p, counterparty: undefined })); }}
-                          onFocus={() => setCpFocus(true)}
-                          onBlur={() => setTimeout(() => setCpFocus(false), 150)}
-                        />
-                        {headerErrors.counterparty && <p className="text-xs text-red-600 mt-1">{headerErrors.counterparty}</p>}
-                        {cpSuggestions.length > 0 && (
-                          <div className="absolute z-10 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
-                            {cpSuggestions.map(cp => (
-                              <button
-                                type="button"
-                                key={cp.id}
-                                onMouseDown={() => handleSelectCp({ target: { value: String(cp.id) } } as any)}
-                                className="block w-full text-left px-3 py-2 hover:bg-amber-50"
-                              >
-                                {cp.short_name} (ИНН: {cp.inn})
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <button type="button" onClick={() => setShowCpCreateModal(true)} className="px-4 py-2 bg-emerald-600 text-white rounded-md whitespace-nowrap">
-                        + Добавить
-                      </button>
-                    </div>
-                  </div>
+                <div className="space-y-1">
+                  <SkeletonLoader className="h-5 w-28" />
+                  <SkeletonLoader className="h-10 w-full" />
                 </div>
-
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <button type="button" onClick={saveRequest} disabled={isSubmitting} className={`bg-amber-600 text-white ${clsBtn} disabled:opacity-50`}>{isSubmitting ? 'Сохранение...' : 'Сохранить'}</button>
-                  <button type="button" onClick={() => setShowSendModal(true)} disabled={isSubmitting} className={`border border-amber-600 text-amber-700 ${clsBtn} disabled:opacity-50`}>Разослать</button>
+                <div className="space-y-1">
+                  <SkeletonLoader className="h-5 w-24" />
+                  <SkeletonLoader className="h-10 w-full" />
                 </div>
-              </>
-            )}
-          </div>
-
-          {/* ---- Модальное окно создания контрагента ---- */}
-          {showCpCreateModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-xl shadow-xl p-6 space-y-4 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-                <h3 className="text-xl font-semibold">Новый контрагент</h3>
-                
-                {/* Поиск по DaData */}
-                <div className="relative">
-                  <label className="text-xs text-gray-600">Поиск организации для автоматического заполнения</label>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <SkeletonLoader className="h-10 w-28" />
+                <SkeletonLoader className="h-10 w-28" />
+              </div>
+            </>
+          ) : (
+            // --- Реальный контент шапки ---
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="lg:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Название заявки*
+                  </label>
                   <input
-                    className={clsInput}
-                    placeholder="Введите ИНН, ОГРН или название организации для автозаполнения"
-                    value={cpDadataQuery}
-                    onChange={e => setCpDadataQuery(e.target.value)}
-                    onFocus={() => setCpDadataFocus(true)}
-                    onBlur={() => setTimeout(() => setCpDadataFocus(false), 200)}
+                    className={headerErrors.title ? clsInputError : clsInput}
+                    value={title}
+                    onChange={(e) => {
+                      setTitle(e.target.value);
+                      if (headerErrors.title)
+                        setHeaderErrors((p) => ({ ...p, title: undefined }));
+                    }}
+                    placeholder="Например: Поставка на объект А"
                   />
-                  {cpDadataLoading && <div className="text-xs text-gray-500 mt-1">Поиск...</div>}
-                  {cpDadataFocus && cpDadataSugg.length > 0 && (
-                    <div className="absolute z-40 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow-lg">
-                      {cpDadataSugg.map((p, i) => (
-                        <button type="button" key={i} onMouseDown={() => handlePickDadataParty(p)} className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm">
-                          <div className="font-semibold">{p.short_name || p.value}</div>
-                          <div className="text-xs text-gray-600">ИНН: {p.inn}, {p.legal_address}</div>
-                        </button>
-                      ))}
-                    </div>
+                  {headerErrors.title && (
+                    <p className="text-xs text-red-600 mt-1">
+                      {headerErrors.title}
+                    </p>
+                  )}
+                </div>
+                <div className="lg:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Дата и время поставки*
+                  </label>
+                  <input
+                    type="datetime-local"
+                    className={
+                      headerErrors.deliveryAt ? clsInputError : clsInput
+                    }
+                    value={deliveryAt}
+                    onChange={(e) => {
+                      setDeliveryAt(e.target.value);
+                      if (headerErrors.deliveryAt)
+                        setHeaderErrors((p) => ({
+                          ...p,
+                          deliveryAt: undefined,
+                        }));
+                    }}
+                  />
+                  {headerErrors.deliveryAt && (
+                    <p className="text-xs text-red-600 mt-1">
+                      {headerErrors.deliveryAt}
+                    </p>
                   )}
                 </div>
 
-                {/* Основное */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
-                  <h4 className="md:col-span-3 text-md font-semibold text-gray-800">Основные реквизиты</h4>
-                  <div>
-                    <label className="text-xs text-gray-600">Краткое наименование*</label>
-                    <input className={cpFormErrors.short_name ? clsInputError : clsInput} placeholder="ООО Ромашка" value={newCpForm.short_name || ''} onChange={e => handleCpFormChange('short_name', e.target.value)} />
-                    {cpFormErrors.short_name && <p className="text-xs text-red-600 mt-1">{cpFormErrors.short_name}</p>}
-                  </div>
-                  <div className="md:col-span-2">
-                    <div className="relative">
-                      <label className="text-xs text-gray-600">Юридический адрес*</label>
+                {/* Адрес */}
+                <div className="lg:col-span-1 relative">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Адрес поставки
+                  </label>
+                  <div className="flex gap-2 items-center">
+                    <div className="relative flex-1">
                       <input
-                        className={cpFormErrors.legal_address ? clsInputError : clsInput}
-                        placeholder="Начните вводить юр. адрес..."
-                        value={newCpForm.legal_address || ''}
-                        onFocus={() => { setCpAddrFocus(true); setCpAddrQuery(newCpForm.legal_address || ''); }}
-                        onBlur={() => setTimeout(() => setCpAddrFocus(false), 150)}
-                        onChange={e => {
-                          handleCpFormChange('legal_address', e.target.value);
-                          setCpAddrQuery(e.target.value);
+                        className={`${
+                          headerErrors.address ? clsInputError : clsInput
+                        } w-full`}
+                        value={address}
+                        onFocus={() => {
+                          setAddrFocus(true);
+                          setAddrQuery(address);
                         }}
+                        onBlur={onBlurAddress}
+                        onChange={(e) => {
+                          setAddress(e.target.value);
+                          setAddrQuery(e.target.value);
+                          setAddressSaved(false);
+                          if (headerErrors.address)
+                            setHeaderErrors((p) => ({
+                              ...p,
+                              address: undefined,
+                            }));
+                        }}
+                        placeholder="Начните вводить адрес..."
+                        disabled={addressSaved && address.length > 0} // Поле disabled, если адрес сохранен и не пуст
                       />
-                      {cpFormErrors.legal_address && <p className="text-xs text-red-600 mt-1">{cpFormErrors.legal_address}</p>}
-                      {cpAddrFocus && cpAddrSugg.length > 0 && (
-                        <div className="absolute z-30 mt-1 w-full max-h-48 overflow-auto bg-white border border-gray-200 rounded-md shadow-lg">
-                          {cpAddrSugg.map((s, i) => (
-                            <button type="button" key={i} onMouseDown={() => handlePickCpAddress(s.unrestricted_value || s.value)} className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm">
+                      {headerErrors.address && (
+                        <p className="text-xs text-red-600 mt-1">
+                          {headerErrors.address}
+                        </p>
+                      )}
+                      {addrFocus && addrSugg.length > 0 && (
+                        <div className="absolute z-20 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
+                          {addrSugg.map((s, i) => (
+                            <button
+                              type="button"
+                              key={i}
+                              onMouseDown={() =>
+                                onPickAddress(s.unrestricted_value || s.value)
+                              }
+                              className="block w-full text-left px-3 py-2 hover:bg-amber-50"
+                            >
                               {s.unrestricted_value || s.value}
+                            </button>
+                          ))}
+                          {addrLoading && (
+                            <div className="px-3 py-2 text-xs text-gray-500">
+                              Загрузка...
+                            </div>
+                          )}
+                          {addrSugg.length === 0 &&
+                            !addrLoading &&
+                            addrQuery.length >= 3 && (
+                              <div className="px-3 py-2 text-xs text-gray-500">
+                                Ничего не найдено
+                              </div>
+                            )}
+                        </div>
+                      )}
+                    </div>
+
+                    {addressSaved && address.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={clearAddress}
+                        className="px-3 py-2 border border-gray-300 rounded-md whitespace-nowrap"
+                      >
+                        Очистить
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={onSaveAddressClick}
+                        className={`px-3 py-2 rounded-md whitespace-nowrap ${
+                          address.trim().length === 0
+                            ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                            : "bg-amber-600 text-white"
+                        }`}
+                        disabled={address.trim().length === 0 || addrLoading}
+                      >
+                        {addrLoading ? "Сохранение..." : "Сохранить"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* ---- Блок выбора контрагента ---- */}
+                <div className="lg:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Контрагент*
+                  </label>
+                  <div className="flex items-start gap-3">
+                    <div className="relative flex-grow">
+                      <input
+                        className={
+                          headerErrors.counterparty ? clsInputError : clsInput
+                        }
+                        placeholder="Начните вводить ИНН или название для поиска..."
+                        value={cpSearchQuery}
+                        onChange={(e) => {
+                          setCpSearchQuery(e.target.value);
+                          setSelectedCp(null);
+                          if (headerErrors.counterparty)
+                            setHeaderErrors((p) => ({
+                              ...p,
+                              counterparty: undefined,
+                            }));
+                        }}
+                        onFocus={() => setCpFocus(true)}
+                        onBlur={() => setTimeout(() => setCpFocus(false), 150)}
+                      />
+                      {headerErrors.counterparty && (
+                        <p className="text-xs text-red-600 mt-1">
+                          {headerErrors.counterparty}
+                        </p>
+                      )}
+                      {cpSuggestions.length > 0 && (
+                        <div className="absolute z-10 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
+                          {cpSuggestions.map((cp) => (
+                            <button
+                              type="button"
+                              key={cp.id}
+                              onMouseDown={() =>
+                                handleSelectCp({
+                                  target: { value: String(cp.id) },
+                                } as any)
+                              }
+                              className="block w-full text-left px-3 py-2 hover:bg-amber-50"
+                            >
+                              {cp.short_name} (ИНН: {cp.inn})
                             </button>
                           ))}
                         </div>
                       )}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowCpCreateModal(true)}
+                      className="px-4 py-2 bg-emerald-600 text-white rounded-md whitespace-nowrap"
+                    >
+                      + Добавить
+                    </button>
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-600">ИНН*</label>
-                    <input className={cpFormErrors.inn ? clsInputError : clsInput} placeholder="10 или 12 цифр" value={newCpForm.inn || ''} onChange={e => handleCpFormChange('inn', e.target.value)} />
-                    {cpFormErrors.inn && <p className="text-xs text-red-600 mt-1">{cpFormErrors.inn}</p>}
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">ОГРН</label>
-                    <input className={cpFormErrors.ogrn ? clsInputError : clsInput} placeholder="13 или 15 цифр" value={newCpForm.ogrn || ''} onChange={e => handleCpFormChange('ogrn', e.target.value)} />
-                    {cpFormErrors.ogrn && <p className="text-xs text-red-600 mt-1">{cpFormErrors.ogrn}</p>}
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">КПП</label>
-                    <input className={cpFormErrors.kpp ? clsInputError : clsInput} placeholder="9 цифр" value={newCpForm.kpp || ''} onChange={e => handleCpFormChange('kpp', e.target.value)} />
-                    {cpFormErrors.kpp && <p className="text-xs text-red-600 mt-1">{cpFormErrors.kpp}</p>}
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">ОКПО</label>
-                    <input className={cpFormErrors.okpo ? clsInputError : clsInput} placeholder="8 или 10 цифр" value={newCpForm.okpo || ''} onChange={e => handleCpFormChange('okpo', e.target.value)} />
-                    {cpFormErrors.okpo && <p className="text-xs text-red-600 mt-1">{cpFormErrors.okpo}</p>}
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="text-xs text-gray-600">ОКАТО/ОКТМО</label>
-                    <input className={clsInput} value={newCpForm.okato || ''} onChange={e => handleCpFormChange('okato', e.target.value)} />
-                  </div>
-                </div>
-
-                {/* Банк */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
-                  <h4 className="md:col-span-3 text-md font-semibold text-gray-800">Банковские реквизиты</h4>
-                  <div>
-                    <label className="text-xs text-gray-600">Расчётный счёт</label>
-                    <input className={cpFormErrors.bank_account ? clsInputError : clsInput} placeholder="20 цифр" value={newCpForm.bank_account || ''} onChange={e => handleCpFormChange('bank_account', e.target.value)} />
-                    {cpFormErrors.bank_account && <p className="text-xs text-red-600 mt-1">{cpFormErrors.bank_account}</p>}
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">БИК банка</label>
-                    <input className={cpFormErrors.bank_bik ? clsInputError : clsInput} placeholder="9 цифр" value={newCpForm.bank_bik || ''} onChange={e => handleCpFormChange('bank_bik', e.target.value)} />
-                    {cpFormErrors.bank_bik && <p className="text-xs text-red-600 mt-1">{cpFormErrors.bank_bik}</p>}
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">Наименование банка</label>
-                    <input className={clsInput} placeholder="ПАО Сбербанк" value={newCpForm.bank_name || ''} onChange={e => handleCpFormChange('bank_name', e.target.value)} />
-                  </div>
-                  <div className="md:col-span-3">
-                    <label className="text-xs text-gray-600">Корр. счёт</label>
-                    <input className={cpFormErrors.bank_corr ? clsInputError : clsInput} placeholder="20 цифр" value={newCpForm.bank_corr || ''} onChange={e => handleCpFormChange('bank_corr', e.target.value)} />
-                    {cpFormErrors.bank_corr && <p className="text-xs text-red-600 mt-1">{cpFormErrors.bank_corr}</p>}
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-4 border-t">
-                  <button onClick={handleCreateCounterparty} className="px-4 py-2 bg-emerald-600 text-white rounded-md">
-                    Сохранить контрагента
-                  </button>
-                  <button onClick={() => { setShowCpCreateModal(false); setNewCpForm({}); setCpFormErrors({}); }} className="px-4 py-2 border border-gray-300 rounded-md">
-                    Отмена
-                  </button>
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* ---- Модальное окно подтверждения рассылки ---- */}
-          {showSendModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-xl shadow-xl p-6 space-y-4 w-full max-w-lg">
-                <h3 className="text-xl font-semibold">Подтверждение рассылки</h3>
-                <p>Заявка будет отправлена поставщикам по следующим категориям:</p>
-                <ul className="list-disc list-inside bg-gray-50 p-3 rounded-md">
-                  {cats.filter(c => c.saved.length > 0).map(cat => (
-                    <li key={cat.id} className="text-gray-800">{cat.title || 'Прочее'}</li>
-                  ))}
-                  {cats.filter(c => c.saved.length > 0).length === 0 && (
-                    <li className="text-gray-500">Нет сохраненных позиций для отправки.</li>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={saveRequest}
+                  disabled={isSubmitting}
+                  className={`bg-amber-600 text-white ${clsBtn} disabled:opacity-50`}
+                >
+                  {isSubmitting ? "Сохранение..." : "Сохранить"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowSendModal(true)}
+                  disabled={isSubmitting}
+                  className={`border border-amber-600 text-amber-700 ${clsBtn} disabled:opacity-50`}
+                >
+                  Разослать
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ---- Модальное окно создания контрагента ---- */}
+        {showCpCreateModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-xl p-6 space-y-4 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+              <h3 className="text-xl font-semibold">Новый контрагент</h3>
+
+              {/* Поиск по DaData */}
+              <div className="relative">
+                <label className="text-xs text-gray-600">
+                  Поиск организации для автоматического заполнения
+                </label>
+                <input
+                  className={clsInput}
+                  placeholder="Введите ИНН, ОГРН или название организации для автозаполнения"
+                  value={cpDadataQuery}
+                  onChange={(e) => setCpDadataQuery(e.target.value)}
+                  onFocus={() => setCpDadataFocus(true)}
+                  onBlur={() => setTimeout(() => setCpDadataFocus(false), 200)}
+                />
+                {cpDadataLoading && (
+                  <div className="text-xs text-gray-500 mt-1">Поиск...</div>
+                )}
+                {cpDadataFocus && cpDadataSugg.length > 0 && (
+                  <div className="absolute z-40 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow-lg">
+                    {cpDadataSugg.map((p, i) => (
+                      <button
+                        type="button"
+                        key={i}
+                        onMouseDown={() => handlePickDadataParty(p)}
+                        className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm"
+                      >
+                        <div className="font-semibold">
+                          {p.short_name || p.value}
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          ИНН: {p.inn}, {p.legal_address}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Основное */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
+                <h4 className="md:col-span-3 text-md font-semibold text-gray-800">
+                  Основные реквизиты
+                </h4>
+                <div>
+                  <label className="text-xs text-gray-600">
+                    Краткое наименование*
+                  </label>
+                  <input
+                    className={
+                      cpFormErrors.short_name ? clsInputError : clsInput
+                    }
+                    placeholder="ООО Ромашка"
+                    value={newCpForm.short_name || ""}
+                    onChange={(e) =>
+                      handleCpFormChange("short_name", e.target.value)
+                    }
+                  />
+                  {cpFormErrors.short_name && (
+                    <p className="text-xs text-red-600 mt-1">
+                      {cpFormErrors.short_name}
+                    </p>
                   )}
-                </ul>
-                <div className="flex gap-3 pt-4 border-t">
-                  <button onClick={sendRequest} disabled={isSubmitting || cats.filter(c => c.saved.length > 0).length === 0} className="px-4 py-2 bg-emerald-600 text-white rounded-md disabled:opacity-50">
-                    {isSubmitting ? 'Отправка...' : 'Отправить'}
-                  </button>
-                  <button onClick={() => setShowSendModal(false)} disabled={isSubmitting} className="px-4 py-2 border border-gray-300 rounded-md disabled:opacity-50">
-                    Отмена
-                  </button>
+                </div>
+                <div className="md:col-span-2">
+                  <div className="relative">
+                    <label className="text-xs text-gray-600">
+                      Юридический адрес*
+                    </label>
+                    <input
+                      className={
+                        cpFormErrors.legal_address ? clsInputError : clsInput
+                      }
+                      placeholder="Начните вводить юр. адрес..."
+                      value={newCpForm.legal_address || ""}
+                      onFocus={() => {
+                        setCpAddrFocus(true);
+                        setCpAddrQuery(newCpForm.legal_address || "");
+                      }}
+                      onBlur={() =>
+                        setTimeout(() => setCpAddrFocus(false), 150)
+                      }
+                      onChange={(e) => {
+                        handleCpFormChange("legal_address", e.target.value);
+                        setCpAddrQuery(e.target.value);
+                      }}
+                    />
+                    {cpFormErrors.legal_address && (
+                      <p className="text-xs text-red-600 mt-1">
+                        {cpFormErrors.legal_address}
+                      </p>
+                    )}
+                    {cpAddrFocus && cpAddrSugg.length > 0 && (
+                      <div className="absolute z-30 mt-1 w-full max-h-48 overflow-auto bg-white border border-gray-200 rounded-md shadow-lg">
+                        {cpAddrSugg.map((s, i) => (
+                          <button
+                            type="button"
+                            key={i}
+                            onMouseDown={() =>
+                              handlePickCpAddress(
+                                s.unrestricted_value || s.value
+                              )
+                            }
+                            className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm"
+                          >
+                            {s.unrestricted_value || s.value}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">ИНН*</label>
+                  <input
+                    className={cpFormErrors.inn ? clsInputError : clsInput}
+                    placeholder="10 или 12 цифр"
+                    value={newCpForm.inn || ""}
+                    onChange={(e) => handleCpFormChange("inn", e.target.value)}
+                  />
+                  {cpFormErrors.inn && (
+                    <p className="text-xs text-red-600 mt-1">
+                      {cpFormErrors.inn}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">ОГРН</label>
+                  <input
+                    className={cpFormErrors.ogrn ? clsInputError : clsInput}
+                    placeholder="13 или 15 цифр"
+                    value={newCpForm.ogrn || ""}
+                    onChange={(e) => handleCpFormChange("ogrn", e.target.value)}
+                  />
+                  {cpFormErrors.ogrn && (
+                    <p className="text-xs text-red-600 mt-1">
+                      {cpFormErrors.ogrn}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">КПП</label>
+                  <input
+                    className={cpFormErrors.kpp ? clsInputError : clsInput}
+                    placeholder="9 цифр"
+                    value={newCpForm.kpp || ""}
+                    onChange={(e) => handleCpFormChange("kpp", e.target.value)}
+                  />
+                  {cpFormErrors.kpp && (
+                    <p className="text-xs text-red-600 mt-1">
+                      {cpFormErrors.kpp}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">ОКПО</label>
+                  <input
+                    className={cpFormErrors.okpo ? clsInputError : clsInput}
+                    placeholder="8 или 10 цифр"
+                    value={newCpForm.okpo || ""}
+                    onChange={(e) => handleCpFormChange("okpo", e.target.value)}
+                  />
+                  {cpFormErrors.okpo && (
+                    <p className="text-xs text-red-600 mt-1">
+                      {cpFormErrors.okpo}
+                    </p>
+                  )}
+                </div>
+                <div className="md:col-span-2">
+                  <label className="text-xs text-gray-600">ОКАТО/ОКТМО</label>
+                  <input
+                    className={clsInput}
+                    value={newCpForm.okato || ""}
+                    onChange={(e) =>
+                      handleCpFormChange("okato", e.target.value)
+                    }
+                  />
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* ---- Категории и позиции ---- */}
-          {isLoading ? (
-            // --- Скелетон для блока категорий ---
-            <div className="bg-white rounded-xl shadow p-5 space-y-4">
-              <SkeletonLoader className="h-8 w-64" />
-              <SkeletonLoader className="h-40 w-full" />
-              <SkeletonLoader className="h-10 w-40" />
+              {/* Банк */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
+                <h4 className="md:col-span-3 text-md font-semibold text-gray-800">
+                  Банковские реквизиты
+                </h4>
+                <div>
+                  <label className="text-xs text-gray-600">
+                    Расчётный счёт
+                  </label>
+                  <input
+                    className={
+                      cpFormErrors.bank_account ? clsInputError : clsInput
+                    }
+                    placeholder="20 цифр"
+                    value={newCpForm.bank_account || ""}
+                    onChange={(e) =>
+                      handleCpFormChange("bank_account", e.target.value)
+                    }
+                  />
+                  {cpFormErrors.bank_account && (
+                    <p className="text-xs text-red-600 mt-1">
+                      {cpFormErrors.bank_account}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">БИК банка</label>
+                  <input
+                    className={cpFormErrors.bank_bik ? clsInputError : clsInput}
+                    placeholder="9 цифр"
+                    value={newCpForm.bank_bik || ""}
+                    onChange={(e) =>
+                      handleCpFormChange("bank_bik", e.target.value)
+                    }
+                  />
+                  {cpFormErrors.bank_bik && (
+                    <p className="text-xs text-red-600 mt-1">
+                      {cpFormErrors.bank_bik}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">
+                    Наименование банка
+                  </label>
+                  <input
+                    className={clsInput}
+                    placeholder="ПАО Сбербанк"
+                    value={newCpForm.bank_name || ""}
+                    onChange={(e) =>
+                      handleCpFormChange("bank_name", e.target.value)
+                    }
+                  />
+                </div>
+                <div className="md:col-span-3">
+                  <label className="text-xs text-gray-600">Корр. счёт</label>
+                  <input
+                    className={
+                      cpFormErrors.bank_corr ? clsInputError : clsInput
+                    }
+                    placeholder="20 цифр"
+                    value={newCpForm.bank_corr || ""}
+                    onChange={(e) =>
+                      handleCpFormChange("bank_corr", e.target.value)
+                    }
+                  />
+                  {cpFormErrors.bank_corr && (
+                    <p className="text-xs text-red-600 mt-1">
+                      {cpFormErrors.bank_corr}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t">
+                <button
+                  onClick={handleCreateCounterparty}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-md"
+                >
+                  Сохранить контрагента
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCpCreateModal(false);
+                    setNewCpForm({});
+                    setCpFormErrors({});
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-md"
+                >
+                  Отмена
+                </button>
+              </div>
             </div>
-          ) : (cats.map(cat => (
-            <div key={cat.id} className="bg-white rounded-xl shadow p-5 space-y-4">
+          </div>
+        )}
+
+        {/* ---- Модальное окно подтверждения рассылки ---- */}
+        {showSendModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-xl p-6 space-y-4 w-full max-w-lg">
+              <h3 className="text-xl font-semibold">Подтверждение рассылки</h3>
+              <p>
+                Заявка будет отправлена поставщикам по следующим категориям:
+              </p>
+              <ul className="list-disc list-inside bg-gray-50 p-3 rounded-md">
+                {cats
+                  .filter((c) => c.saved.length > 0)
+                  .map((cat) => (
+                    <li key={cat.id} className="text-gray-800">
+                      {cat.title || "Прочее"}
+                    </li>
+                  ))}
+                {cats.filter((c) => c.saved.length > 0).length === 0 && (
+                  <li className="text-gray-500">
+                    Нет сохраненных позиций для отправки.
+                  </li>
+                )}
+              </ul>
+              <div className="flex gap-3 pt-4 border-t">
+                <button
+                  onClick={sendRequest}
+                  disabled={
+                    isSubmitting ||
+                    cats.filter((c) => c.saved.length > 0).length === 0
+                  }
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-md disabled:opacity-50"
+                >
+                  {isSubmitting ? "Отправка..." : "Отправить"}
+                </button>
+                <button
+                  onClick={() => setShowSendModal(false)}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 border border-gray-300 rounded-md disabled:opacity-50"
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ---- Категории и позиции ---- */}
+        {isLoading ? (
+          // --- Скелетон для блока категорий ---
+          <div className="bg-white rounded-xl shadow p-5 space-y-4">
+            <SkeletonLoader className="h-8 w-64" />
+            <SkeletonLoader className="h-40 w-full" />
+            <SkeletonLoader className="h-10 w-40" />
+          </div>
+        ) : (
+          cats.map((cat) => (
+            <div
+              key={cat.id}
+              className="bg-white rounded-xl shadow p-5 space-y-4"
+            >
               {/* Заголовок категории: сначала ввод, потом жирный текст + кнопка Изменить */}
               {cat.editingTitle ? (
                 <div className="flex items-center gap-3">
@@ -998,16 +1454,36 @@ export default function RequestPage() {
                       className="px-2 py-1 border border-gray-300 rounded-md text-sm w-full"
                       value={cat.title}
                       placeholder="Категория (например, Металлопрокат)"
-                      onFocus={()=> setCatFocus(p=>({ ...p, [cat.id]: true }))}
-                      onBlur={()=> setTimeout(()=> setCatFocus(p=>({ ...p, [cat.id]: false })), 120)}
-                      onChange={(e)=> setCats(cs => cs.map(c => c.id===cat.id ? { ...c, title: e.target.value } : c))}
-                      onKeyDown={(e)=>{ if (e.key === 'Enter') finalizeCategoryTitle(cat.id, cat.title); }}
+                      onFocus={() =>
+                        setCatFocus((p) => ({ ...p, [cat.id]: true }))
+                      }
+                      onBlur={() =>
+                        setTimeout(
+                          () => setCatFocus((p) => ({ ...p, [cat.id]: false })),
+                          120
+                        )
+                      }
+                      onChange={(e) =>
+                        setCats((cs) =>
+                          cs.map((c) =>
+                            c.id === cat.id
+                              ? { ...c, title: e.target.value }
+                              : c
+                          )
+                        )
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter")
+                          finalizeCategoryTitle(cat.id, cat.title);
+                      }}
                     />
                     {catFocus[cat.id] && (
                       <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow">
                         <button
                           type="button"
-                          onMouseDown={()=> finalizeCategoryTitle(cat.id, 'Металлопрокат')}
+                          onMouseDown={() =>
+                            finalizeCategoryTitle(cat.id, "Металлопрокат")
+                          }
                           className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm"
                         >
                           Металлопрокат
@@ -1015,16 +1491,25 @@ export default function RequestPage() {
                       </div>
                     )}
                   </div>
-                  <button className="px-3 py-1 bg-emerald-600 text-white rounded-md text-sm" onClick={()=>finalizeCategoryTitle(cat.id, cat.title)}>
+                  <button
+                    className="px-3 py-1 bg-emerald-600 text-white rounded-md text-sm"
+                    onClick={() => finalizeCategoryTitle(cat.id, cat.title)}
+                  >
                     Применить
                   </button>
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
                   <div className="text-lg font-semibold">
-                    {cat.title?.trim() || (cat.kind === 'metal' ? 'Металлопрокат' : 'Новая категория')}
+                    {cat.title?.trim() ||
+                      (cat.kind === "metal"
+                        ? "Металлопрокат"
+                        : "Новая категория")}
                   </div>
-                  <button className="px-3 py-1 border border-gray-300 rounded-md text-sm" onClick={()=>reopenCategoryTitle(cat.id)}>
+                  <button
+                    className="px-3 py-1 border border-gray-300 rounded-md text-sm"
+                    onClick={() => reopenCategoryTitle(cat.id)}
+                  >
                     Изменить
                   </button>
                 </div>
@@ -1036,7 +1521,7 @@ export default function RequestPage() {
                   {/* Если есть сохранённые позиции — показываем таблицу */}
                   {cat.saved.length > 0 && (
                     <div className="space-y-2">
-                      {cat.kind === 'metal' ? (
+                      {cat.kind === "metal" ? (
                         <table className="w-full table-auto border-separate border-spacing-0">
                           <thead>
                             <tr className="bg-gray-50">
@@ -1051,17 +1536,21 @@ export default function RequestPage() {
                           </thead>
                           <tbody>
                             {cat.saved.map((s, i) => {
-                              if (s.kind !== 'metal') return null;
+                              if (s.kind !== "metal") return null;
                               const m = s as SavedMetalItem;
                               return (
                                 <tr key={i} className="border-t">
-                                  <td className={td}>{m.category || '—'}</td>
-                                  <td className={td}>{m.size || '—'}</td>
-                                  <td className={td}>{m.state_standard || '—'}</td>
-                                  <td className={td}>{m.stamp || '—'}</td>
-                                  <td className={td}>{m.allow_analogs ? 'Да' : 'Нет'}</td>
-                                  <td className={td}>{m.quantity ?? '—'}</td>
-                                  <td className={td}>{m.comment || '—'}</td>
+                                  <td className={td}>{m.category || "—"}</td>
+                                  <td className={td}>{m.size || "—"}</td>
+                                  <td className={td}>
+                                    {m.state_standard || "—"}
+                                  </td>
+                                  <td className={td}>{m.stamp || "—"}</td>
+                                  <td className={td}>
+                                    {m.allow_analogs ? "Да" : "Нет"}
+                                  </td>
+                                  <td className={td}>{m.quantity ?? "—"}</td>
+                                  <td className={td}>{m.comment || "—"}</td>
                                 </tr>
                               );
                             })}
@@ -1080,15 +1569,15 @@ export default function RequestPage() {
                           </thead>
                           <tbody>
                             {cat.saved.map((s, i) => {
-                              if (s.kind !== 'generic') return null;
+                              if (s.kind !== "generic") return null;
                               const g = s as SavedGenericItem;
                               return (
                                 <tr key={i} className="border-t">
                                   <td className={td}>{g.name}</td>
-                                  <td className={td}>{g.dims || '—'}</td>
-                                  <td className={td}>{g.uom || '—'}</td>
-                                  <td className={td}>{g.quantity ?? '—'}</td>
-                                  <td className={td}>{g.comment || '—'}</td>
+                                  <td className={td}>{g.dims || "—"}</td>
+                                  <td className={td}>{g.uom || "—"}</td>
+                                  <td className={td}>{g.quantity ?? "—"}</td>
+                                  <td className={td}>{g.comment || "—"}</td>
                                 </tr>
                               );
                             })}
@@ -1099,145 +1588,273 @@ export default function RequestPage() {
                   )}
 
                   {/* Несохранённые редакторы позиций (кнопки под позицией) */}
-                  {cat.editors.map(row => (
-                    <div key={row._id} className="rounded-lg border border-gray-200 p-4">
-                      {cat.kind === 'metal' ? (
+                  {cat.editors.map((row) => (
+                    <div
+                      key={row._id}
+                      className="rounded-lg border border-gray-200 p-4"
+                    >
+                      {cat.kind === "metal" ? (
                         <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
                           <div>
-                            <div className="text-xs text-gray-600 mb-1">Категория (лист, труба)</div>
-                            <select className={clsInput}
-                              value={(row as MetalRow).mCategory || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'mCategory', e.target.value)}
+                            <div className="text-xs text-gray-600 mb-1">
+                              Категория (лист, труба)
+                            </div>
+                            <select
+                              className={clsInput}
+                              value={(row as MetalRow).mCategory || ""}
+                              onChange={(e) =>
+                                setCell(
+                                  cat.id,
+                                  row._id,
+                                  "mCategory",
+                                  e.target.value
+                                )
+                              }
                             >
                               <option value="">—</option>
-                              {opts.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                              {opts.categories.map((c) => (
+                                <option key={c} value={c}>
+                                  {c}
+                                </option>
+                              ))}
                             </select>
                           </div>
                           <div>
-                            <div className="text-xs text-gray-600 mb-1">Размер (1×1×1)</div>
-                            <input className={clsInput} placeholder="1x1x1"
-                              value={(row as MetalRow).size || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'size', e.target.value)} />
+                            <div className="text-xs text-gray-600 mb-1">
+                              Размер (1×1×1)
+                            </div>
+                            <input
+                              className={clsInput}
+                              placeholder="1x1x1"
+                              value={(row as MetalRow).size || ""}
+                              onChange={(e) =>
+                                setCell(cat.id, row._id, "size", e.target.value)
+                              }
+                            />
                           </div>
                           <div>
-                            <div className="text-xs text-gray-600 mb-1">ГОСТ</div>
-                            <select className={clsInput}
-                              value={(row as MetalRow).gost || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'gost', e.target.value)}
+                            <div className="text-xs text-gray-600 mb-1">
+                              ГОСТ
+                            </div>
+                            <select
+                              className={clsInput}
+                              value={(row as MetalRow).gost || ""}
+                              onChange={(e) =>
+                                setCell(cat.id, row._id, "gost", e.target.value)
+                              }
                             >
                               <option value="">—</option>
-                              {opts.standards.map(s => <option key={s} value={s}>{s}</option>)}
+                              {opts.standards.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
                             </select>
                           </div>
                           <div>
-                            <div className="text-xs text-gray-600 mb-1">Марка</div>
-                            <select className={clsInput}
-                              value={(row as MetalRow).grade || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'grade', e.target.value)}
+                            <div className="text-xs text-gray-600 mb-1">
+                              Марка
+                            </div>
+                            <select
+                              className={clsInput}
+                              value={(row as MetalRow).grade || ""}
+                              onChange={(e) =>
+                                setCell(
+                                  cat.id,
+                                  row._id,
+                                  "grade",
+                                  e.target.value
+                                )
+                              }
                             >
                               <option value="">—</option>
-                              {opts.grades.map(s => <option key={s} value={s}>{s}</option>)}
+                              {opts.grades.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
                             </select>
                           </div>
                           <div>
-                            <div className="text-xs text-gray-600 mb-1">Аналоги</div>
-                            <select className={clsInput}
-                              value={(row as MetalRow).allowAnalogs ? 'Да' : 'Нет'}
-                              onChange={(e)=>setCell(cat.id, row._id,'allowAnalogs', e.target.value === 'Да')}
+                            <div className="text-xs text-gray-600 mb-1">
+                              Аналоги
+                            </div>
+                            <select
+                              className={clsInput}
+                              value={
+                                (row as MetalRow).allowAnalogs ? "Да" : "Нет"
+                              }
+                              onChange={(e) =>
+                                setCell(
+                                  cat.id,
+                                  row._id,
+                                  "allowAnalogs",
+                                  e.target.value === "Да"
+                                )
+                              }
                             >
                               <option>Нет</option>
                               <option>Да</option>
                             </select>
                           </div>
                           <div>
-                            <div className="text-xs text-gray-600 mb-1">Количество</div>
-                            <input className={clsInput} type="number" min="0" step="any"
-                              value={(row as MetalRow).qty || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'qty', e.target.value)} />
+                            <div className="text-xs text-gray-600 mb-1">
+                              Количество
+                            </div>
+                            <input
+                              className={clsInput}
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={(row as MetalRow).qty || ""}
+                              onChange={(e) =>
+                                setCell(cat.id, row._id, "qty", e.target.value)
+                              }
+                            />
                           </div>
                           <div>
-                            <div className="text-xs text-gray-600 mb-1">Комментарий</div>
-                            <input className={clsInput}
-                              value={(row as MetalRow).comment || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'comment', e.target.value)} />
+                            <div className="text-xs text-gray-600 mb-1">
+                              Комментарий
+                            </div>
+                            <input
+                              className={clsInput}
+                              value={(row as MetalRow).comment || ""}
+                              onChange={(e) =>
+                                setCell(
+                                  cat.id,
+                                  row._id,
+                                  "comment",
+                                  e.target.value
+                                )
+                              }
+                            />
                           </div>
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                           <div className="md:col-span-2">
-                            <div className="text-xs text-gray-600 mb-1">Наименование товаров / работ / услуг</div>
-                            <input className={clsInput}
-                              value={(row as GenericRow).name || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'name', e.target.value)} />
+                            <div className="text-xs text-gray-600 mb-1">
+                              Наименование товаров / работ / услуг
+                            </div>
+                            <input
+                              className={clsInput}
+                              value={(row as GenericRow).name || ""}
+                              onChange={(e) =>
+                                setCell(cat.id, row._id, "name", e.target.value)
+                              }
+                            />
                           </div>
                           <div>
-                            <div className="text-xs text-gray-600 mb-1">Размеры, характеристики</div>
-                            <input className={clsInput}
-                              value={(row as GenericRow).dims || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'dims', e.target.value)} />
+                            <div className="text-xs text-gray-600 mb-1">
+                              Размеры, характеристики
+                            </div>
+                            <input
+                              className={clsInput}
+                              value={(row as GenericRow).dims || ""}
+                              onChange={(e) =>
+                                setCell(cat.id, row._id, "dims", e.target.value)
+                              }
+                            />
                           </div>
                           <div>
-                            <div className="text-xs text-gray-600 mb-1">Ед. изм.</div>
-                            <input className={clsInput}
-                              value={(row as GenericRow).uom || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'uom', e.target.value)} />
+                            <div className="text-xs text-gray-600 mb-1">
+                              Ед. изм.
+                            </div>
+                            <input
+                              className={clsInput}
+                              value={(row as GenericRow).uom || ""}
+                              onChange={(e) =>
+                                setCell(cat.id, row._id, "uom", e.target.value)
+                              }
+                            />
                           </div>
                           <div>
-                            <div className="text-xs text-gray-600 mb-1">Количество</div>
-                            <input className={clsInput} type="number" min="0" step="any"
-                              value={(row as GenericRow).qty || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'qty', e.target.value)} />
+                            <div className="text-xs text-gray-600 mb-1">
+                              Количество
+                            </div>
+                            <input
+                              className={clsInput}
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={(row as GenericRow).qty || ""}
+                              onChange={(e) =>
+                                setCell(cat.id, row._id, "qty", e.target.value)
+                              }
+                            />
                           </div>
                           <div className="md:col-span-5">
-                            <div className="text-xs text-gray-600 mb-1">Комментарий</div>
-                            <input className={clsInput}
-                              value={(row as GenericRow).comment || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'comment', e.target.value)} />
+                            <div className="text-xs text-gray-600 mb-1">
+                              Комментарий
+                            </div>
+                            <input
+                              className={clsInput}
+                              value={(row as GenericRow).comment || ""}
+                              onChange={(e) =>
+                                setCell(
+                                  cat.id,
+                                  row._id,
+                                  "comment",
+                                  e.target.value
+                                )
+                              }
+                            />
                           </div>
                         </div>
                       )}
 
                       {/* Кнопки под позицией */}
                       <div className="mt-3 flex flex-wrap gap-3">
-                        <button onClick={()=>savePosition(cat.id, row._id)} className="px-4 py-2 bg-emerald-600 text-white rounded-md">Сохранить</button>
-                        <button onClick={()=>removeEditorRow(cat.id, row._id)} className="px-4 py-2 border border-gray-300 rounded-md">Удалить</button>
+                        <button
+                          onClick={() => savePosition(cat.id, row._id)}
+                          className="px-4 py-2 bg-emerald-600 text-white rounded-md"
+                        >
+                          Сохранить
+                        </button>
+                        <button
+                          onClick={() => removeEditorRow(cat.id, row._id)}
+                          className="px-4 py-2 border border-gray-300 rounded-md"
+                        >
+                          Удалить
+                        </button>
                       </div>
                     </div>
                   ))}
 
                   {/* Кнопка добавить позицию — снизу блока категории */}
                   <div>
-                    <button onClick={()=>addPosition(cat.id)} className="px-4 py-2 border border-dashed border-gray-300 rounded-md">
+                    <button
+                      onClick={() => addPosition(cat.id)}
+                      className="px-4 py-2 border border-dashed border-gray-300 rounded-md"
+                    >
                       + Добавить позицию
                     </button>
                   </div>
                 </>
               )}
             </div>
-          )))}
+          ))
+        )}
 
-          {/* Кнопка добавить категорию — слева */}
-          {isLoading ? (
-            // --- Скелетон для кнопки "Добавить категорию" ---
-            <div className="flex justify-start">
-              <SkeletonLoader className="h-14 w-52" />
-            </div>
-          ) : (
-            // --- Реальная кнопка ---
-            <div className="flex justify-start">
-              <button
-                type="button"
-                onClick={addCategory}
-                className="px-5 py-3 border border-dashed border-gray-400 rounded-md text-gray-700 bg-white shadow-sm"
-              >
-                + Добавить категорию
-              </button>
-            </div>
-          )}
-        </div>
-      </main>
-
-      <Footer />
-    </div>
+        {/* Кнопка добавить категорию — слева */}
+        {isLoading ? (
+          // --- Скелетон для кнопки "Добавить категорию" ---
+          <div className="flex justify-start">
+            <SkeletonLoader className="h-14 w-52" />
+          </div>
+        ) : (
+          // --- Реальная кнопка ---
+          <div className="flex justify-start">
+            <button
+              type="button"
+              onClick={addCategory}
+              className="px-5 py-3 border border-dashed border-gray-400 rounded-md text-gray-700 bg-white shadow-sm"
+            >
+              + Добавить категорию
+            </button>
+          </div>
+        )}
+      </div>
+    </>
   );
 }

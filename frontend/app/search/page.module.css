@@ -1,0 +1,24 @@
+.box {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    text-align: center;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.inner {
+    display: flex;
+    flex-direction: column;
+    gap: 60px;
+}
+
+.p1 {
+    font-weight: 400;
+}
+
+.block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}

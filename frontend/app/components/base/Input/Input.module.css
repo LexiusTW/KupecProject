@@ -1,0 +1,25 @@
+.box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.label {
+  color: var(--main-color);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.input {
+  display: flex;
+  align-items: center;
+  height: 42px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  padding: 13px;
+}
+
+.error {
+    color: var(--red-color);
+    font-size: 14px;
+}

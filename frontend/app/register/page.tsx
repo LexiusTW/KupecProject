@@ -1,29 +1,28 @@
-'use client';
+"use client";
 
-import RegisterForm from '../components/RegisterForm';
-import Footer from '../components/Footer';
-import Header from '../components/Header';
+import RegisterForm from "../components/shared/RegisterForm/RegisterForm";
+import { Container } from "../components/base/Container/Container";
+
+import { rc } from "../utils/rc";
+
+import css from "./page.module.css";
 
 export default function RegisterPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-yellow-100 flex flex-col">
-      <Header />
+    <section className={css.section}>
+      <Container>
+        <div className={css.inner}>
+          <div className={css.box}>
+            <h1 className="h1">Регистрация</h1>
 
-      <main className="flex-grow flex items-center justify-center">
-        <div className="container mx-auto px-4 py-8">
-          <div className="max-w-md mx-auto">
-            <div className="text-center mb-8">
-              <h1 className="text-3xl font-bold text-gray-800 mb-2">Регистрация</h1>
-              <p className="text-gray-600">
-                Создайте новый аккаунт покупателя или продавца
-              </p>
-            </div>
-            <RegisterForm />
+            <p className={rc(['p1', css.p1])}>
+              Создайте новый аккаунт покупателя или продавца
+            </p>
           </div>
-        </div>
-      </main>
 
-      <Footer />
-    </div>
+          <RegisterForm />
+        </div>
+      </Container>
+    </section>
   );
 }

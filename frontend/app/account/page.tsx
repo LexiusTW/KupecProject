@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useState, ChangeEvent, useCallback, useMemo, useRef } from 'react';
-import Header from '../components/Header';
-import Footer from '../components/Footer';
 import Link from 'next/link';
 import SkeletonLoader from '../components/SkeletonLoader';
 import Notification, { NotificationProps } from '../components/Notification';
@@ -361,10 +359,10 @@ export default function AccountPage() {
   }, [addrQuery, addrFocus, fetchAddrSuggest]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-yellow-100 flex flex-col">
-      <Header />
+  
+    
 
-      <main className="flex-grow">
+      <>
         {/* ---- Контейнер для уведомлений ---- */}
         <div className="fixed top-24 right-5 z-50 w-full max-w-sm space-y-3">
           {notifications.map(notif => (
@@ -651,8 +649,8 @@ export default function AccountPage() {
             </div>
           )}
         </div>
-      </main>
+      </>
 
-      <Footer />
-    </div>
+ 
+
   )};
