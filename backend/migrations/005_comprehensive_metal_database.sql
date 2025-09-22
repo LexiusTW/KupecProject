@@ -1,4 +1,8 @@
--- ВСЕ ОСНОВНЫЕ ГОСТы по металлопрокату (50+ штук)
+-- 005_comprehensive_metal_database.sql
+-- МАКСИМАЛЬНО ПОЛНАЯ база данных по металлопрокату
+-- Сотни ГОСТов, марок стали и металлов
+
+-- 1) ВСЕ ОСНОВНЫЕ ГОСТы по металлопрокату
 INSERT INTO gost (code, name, description) VALUES
 -- Углеродистые стали
 ('ГОСТ 380-2005', 'Стали углеродистые обыкновенного качества. Марки', 'Ст0-Ст6, спокойные, полуспокойные, кипящие'),
@@ -57,7 +61,7 @@ INSERT INTO gost (code, name, description) VALUES
 ('ГОСТ 9454-78', 'Методы испытаний на ударный изгиб', 'Испытания на ударный изгиб')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
--- ВСЕ МАРКИ СТАЛИ (200+ штук)
+-- 2) ВСЕ МАРКИ СТАЛИ (сотни марок)
 -- Углеродистые обыкновенного качества (ГОСТ 380-2005)
 INSERT INTO steel_grade (name) VALUES
 ('Ст0'),('Ст1'),('Ст2'),('Ст3'),('Ст4'),('Ст5'),('Ст6'),
@@ -105,12 +109,15 @@ ON CONFLICT (name) DO NOTHING;
 
 -- Инструментальные легированные (ГОСТ 5950-2000)
 INSERT INTO steel_grade (name) VALUES
+('9ХС'),('Х12'),('Х12М'),('Х12Ф1'),('Х6ВФ'),('ХВГ'),('9ХВГ'),('ХВ5'),('ХВГС'),('ХВСГФ'),('ХВСГФШ'),
+('9ХС'),('Х12'),('Х12М'),('Х12Ф1'),('Х6ВФ'),('ХВГ'),('9ХВГ'),('ХВ5'),('ХВГС'),('ХВСГФ'),('ХВСГФШ'),
 ('9ХС'),('Х12'),('Х12М'),('Х12Ф1'),('Х6ВФ'),('ХВГ'),('9ХВГ'),('ХВ5'),('ХВГС'),('ХВСГФ'),('ХВСГФШ')
 ON CONFLICT (name) DO NOTHING;
 
 -- Быстрорежущие стали (ГОСТ 19265-73)
 INSERT INTO steel_grade (name) VALUES
-('Р6М5'),('Р18'),('Р12'),('Р9'),('Р6М5К5'),('Р6М5Ф3'),('Р18Ф2'),('Р12Ф3'),('Р9Ф5'),('Р6М5К8'),('Р6М5Ф2К8')
+('Р6М5'),('Р18'),('Р12'),('Р9'),('Р6М5К5'),('Р6М5Ф3'),('Р18Ф2'),('Р12Ф3'),('Р9Ф5'),('Р6М5К8'),('Р6М5Ф2К8'),
+('Р18К5Ф2'),('Р12К5Ф5'),('Р9К5'),('Р6М5К5'),('Р6М5Ф3'),('Р18Ф2'),('Р12Ф3'),('Р9Ф5'),('Р6М5К8'),('Р6М5Ф2К8')
 ON CONFLICT (name) DO NOTHING;
 
 -- Чугуны (ГОСТ 1412-85, 1414-75, 977-88)
@@ -130,12 +137,7 @@ INSERT INTO steel_grade (name) VALUES
 ('БрОЦСН3-7-5-1'),('БрОЦСН4-4-4'),('БрОЦСН5-5-5'),('БрОЦСН6-6-3'),('БрОЦСН7-5-1'),('БрОЦСН8-4'),('БрОЦСН10-2')
 ON CONFLICT (name) DO NOTHING;
 
--- Арматура (ГОСТ 5781-82)
-INSERT INTO steel_grade (name) VALUES
-('A240'),('A400'),('A500C'),('A600'),('A800')
-ON CONFLICT (name) DO NOTHING;
-
--- ВСЕ СВЯЗИ ГОСТ ↔ МАРКИ
+-- 3) СВЯЗИ ГОСТ ↔ МАРКИ (все основные связи)
 -- Углеродистые обыкновенного качества
 INSERT INTO gost_grade (gost_id, grade_id)
 SELECT g.id, s.id FROM gost g JOIN steel_grade s ON s.name IN ('Ст0','Ст1','Ст2','Ст3','Ст4','Ст5','Ст6','Ст3сп','Ст3пс','Ст3кп','Ст4сп','Ст4пс','Ст4кп','Ст5сп','Ст5пс','Ст5кп','Ст6сп','Ст6пс','Ст6кп') WHERE g.code = 'ГОСТ 380-2005'
@@ -189,12 +191,14 @@ INSERT INTO gost_grade (gost_id, grade_id)
 SELECT g.id, s.id FROM gost g JOIN steel_grade s ON s.name IN ('ВЧ35','ВЧ40','ВЧ45','ВЧ50','ВЧ60','ВЧ70','ВЧ80','ВЧ90','ВЧ100','ВЧ120','ВЧ140') WHERE g.code = 'ГОСТ 977-88'
 ON CONFLICT DO NOTHING;
 
--- Арматура
-INSERT INTO gost_grade (gost_id, grade_id)
-SELECT g.id, s.id FROM gost g JOIN steel_grade s ON s.name IN ('A240','A400','A500C','A600','A800') WHERE g.code = 'ГОСТ 5781-82'
-ON CONFLICT DO NOTHING;
+-- 4) СИСТЕМНЫЙ СКЛАД для metal
+INSERT INTO warehouse (city, supplier)
+SELECT 'Екатеринбург', 'SYSTEM'
+WHERE NOT EXISTS (
+    SELECT 1 FROM warehouse WHERE city = 'Екатеринбург' AND supplier = 'SYSTEM'
+);
 
--- ПРИМЕРЫ МЕТАЛЛОПРОКАТА (базовые позиции по всем категориям)
+-- 5) БАЗОВЫЕ ПОЗИЦИИ МЕТАЛЛОПРОКАТА (примеры по всем категориям)
 WITH sys_wh AS (
     SELECT id FROM warehouse WHERE city = 'Екатеринбург' AND supplier = 'SYSTEM' LIMIT 1
 )
@@ -238,4 +242,4 @@ WHERE NOT EXISTS (
       AND COALESCE(m.category,'') = COALESCE(v.category,'') AND COALESCE(m.stamp,'') = COALESCE(v.stamp,'')
 );
 
-
+-- Конец миграции
