@@ -11,6 +11,19 @@ from app.schemas.supplier import SupplierCreate, SupplierOut, SupplierUpdate
 router = APIRouter()
 
 
+from typing import List
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, cast, String
+
+from app.api.deps import get_db, get_current_user
+from app.models.user import Buyer
+from app.models.supplier import Supplier
+from app.schemas.supplier import SupplierCreate, SupplierOut, SupplierUpdate
+
+router = APIRouter()
+
+
 @router.get("/suppliers/by-category", response_model=List[SupplierOut])
 async def list_suppliers_by_category(
     category: str,
@@ -18,15 +31,18 @@ async def list_suppliers_by_category(
     user: Buyer = Depends(get_current_user),
 ):
     """
-    Возвращает список поставщиков текущего покупателя, у которых поле category совпадает с переданной строкой (регистронезависимо).
+    Возвращает список поставщиков текущего покупателя, у которых в списке категорий есть совпадение.
     """
     if not isinstance(user, Buyer):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Только покупатели могут запрашивать поставщиков")
 
     q = select(Supplier).where(Supplier.buyer_id == user.id)
-    # Фильтр по категории, если передана
+    
     if category:
-        q = q.where(Supplier.category.ilike(category))
+        # Поиск внутри JSON массива. Приводим к строке для регистронезависимого поиска.
+        # Это не самый производительный способ, но он универсален для разных БД.
+        # Ищем точное совпадение элемента в кавычках, чтобы избежать частичных совпадений.
+        q = q.where(cast(Supplier.category, String).ilike(f'%"{category}"%'))
 
     result = await db.execute(q.order_by(Supplier.short_name))
     return result.scalars().all()

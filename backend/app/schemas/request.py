@@ -1,6 +1,6 @@
 from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, date
 from uuid import UUID
 
 Role = Literal["buyer", "seller"]
@@ -41,7 +41,7 @@ class RequestItemCreate(RequestItemBase):
 class RequestCreate(BaseModel):
     items: List[RequestItemCreate]
     comment: Optional[str] = None
-    delivery_at: Optional[datetime] = None
+    delivery_at: Optional[date] = None
     delivery_address: Optional[str] = None  # если фронт когда-то пришлёт адрес прямо тут
     counterparty_id: Optional[int] = None   # ID контрагента
     model_config = {"from_attributes": True}
@@ -88,7 +88,7 @@ class RequestOut(BaseModel):
     display_id: int
     comment: Optional[str] = None
     delivery_address: Optional[str] = None
-    delivery_at: Optional[datetime] = None
+    delivery_at: Optional[date] = None
     created_at: datetime
     status: str
     winner_offer_id: Optional[int] = None

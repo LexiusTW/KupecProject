@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from app.db.base_class import Base
 
@@ -18,6 +18,6 @@ class Supplier(Base):
     contact_person = Column(String, nullable=False)         # ФИО контактного лица
     phone_number = Column(String, nullable=False)           # Телефон
     email = Column(String, nullable=False)                  # Почта
-    category = Column(String(100), nullable=False)          # Категория поставщика (именительный падеж)
+    category = Column(JSON, nullable=False)          # Категория поставщика (именительный падеж)
 
     buyer = relationship("Buyer")

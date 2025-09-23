@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, Integer, String, ForeignKey, Float, DateTime, func, Boolean, Sequence
+from sqlalchemy import Column, Integer, String, ForeignKey, Float, DateTime, func, Boolean, Sequence, Date
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.db.base_class import Base
@@ -15,7 +15,7 @@ class Request(Base):
     counterparty_id = Column(Integer, ForeignKey("counterparties.id"), nullable=True)
     delivery_address = Column(String, nullable=True)
     comment = Column(String, nullable=True)
-    delivery_at = Column(DateTime(timezone=True), nullable=True) # Дата и время поставки
+    delivery_at = Column(Date, nullable=True) # Дата поставки
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(String, nullable=False, server_default="new")
     winner_offer_id = Column(Integer, ForeignKey("offers.id"), nullable=True)

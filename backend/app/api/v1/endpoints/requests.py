@@ -41,6 +41,7 @@ class SavedGenericItem(SavedItemBase):
     name: str
     dims: str | None = None
     unit: str | None = None
+    allow_analogs: bool = False
 
 class GroupPayload(BaseModel):
     group_key: str
@@ -74,9 +75,9 @@ def _generate_email_html(
     if is_metal_only:
         headers = ["Категория", "Наименование", "Размер", "ГОСТ", "Марка", "Аналоги", "Количество", "Ед. изм.", "Комментарий"]
     elif is_generic_only:
-        headers = ["Наименование", "Размеры, характеристики", "Ед. изм.", "Количество", "Комментарий"]
+        headers = ["Наименование", "Размеры, характеристики", "Аналоги", "Ед. изм.", "Количество", "Комментарий"]
     else: # Смешанный тип
-        headers = ["Категория", "Наименование", "Размер/Характеристики", "Марка/ГОСТ", "Кол-во", "Ед.изм.", "Комментарий"]
+        headers = ["Категория", "Наименование", "Размер/Характеристики", "Марка/ГОСТ", "Аналоги", "Кол-во", "Ед.изм.", "Комментарий"]
 
     # 2. Создание HTML таблицы
     items_table_html = '<div style="overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 20px;">'
@@ -107,6 +108,7 @@ def _generate_email_html(
             assert item.kind == 'generic'
             data = {
                 "Наименование": item.name, "Размеры, характеристики": item.dims, 
+                "Аналоги": "Да" if item.allow_analogs else "Нет",
                 "Ед. изм.": item.unit, "Количество": item.quantity, "Комментарий": item.comment
             }
         else:
@@ -115,12 +117,14 @@ def _generate_email_html(
                     "Категория": "Металлопрокат", 
                     "Наименование": item.category, 
                     "Размер/Характеристики": item.size, "Марка/ГОСТ": f"{item.stamp or ''} / {item.state_standard or ''}".strip(' /'),
+                    "Аналоги": "Да" if item.allow_analogs else "Нет",
                     "Кол-во": item.quantity, "Ед.изм.": item.unit or 'шт.', "Комментарий": item.comment
                 }
             else:
                 data = {
                     "Категория": item.category, "Наименование": item.name, 
                     "Размер/Характеристики": item.dims, "Марка/ГОСТ": "—",
+                    "Аналоги": "Да" if item.allow_analogs else "Нет",
                     "Кол-во": item.quantity, "Ед.изм.": item.unit, "Комментарий": item.comment
                 }
 
@@ -136,7 +140,7 @@ def _generate_email_html(
         "Номер заявки": f"№{req.display_id}",
         "Дата создания": req.created_at.strftime('%d.%m.%Y %H:%M'),
         "Название поставки": req.comment,
-        "Дата и время поставки": req.delivery_at.strftime('%d.%m.%Y %H:%M') if req.delivery_at else '—',
+        "Дата поставки": req.delivery_at.strftime('%d.%m.%Y') if req.delivery_at else '—',
         "Адрес поставки": req.delivery_address
     }
     meta_html = '<table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 30px;">'
@@ -156,9 +160,14 @@ def _generate_email_html(
     meta_html += '</table>'
 
     default_header = """<p style=\"margin-bottom: 25px; color: #343a40; line-height: 1.7; font-size: 16px;\">Здравствуйте,</p>\n<p style=\"margin-bottom: 30px; color: #343a40; line-height: 1.7; font-size: 16px;\">Просим вас предоставить коммерческое предложение по следующим позициям. Для этого перейдите по ссылке выше.</p>"""
-    default_footer = f"""<p style=\"margin-top: 30px; color: #343a40; line-height: 1.7; font-size: 16px;\">С уважением,<br>{user.login or 'Покупатель'}</p>"""
+    # Use user's custom footer if available, otherwise use a default
+    if user.email_footer:
+        default_footer = user.email_footer.replace('\n', '<br>')
+    else:
+        default_footer = f"""<p style=\"margin-top: 30px; color: #343a40; line-height: 1.7; font-size: 16px;\">С уважением,<br>{user.login or 'Покупатель'}</p>"""
 
     header_html = header_text.replace('\n', '<br>') if header_text is not None else default_header
+    # The footer from the frontend payload takes precedence
     footer_html = footer_text.replace('\n', '<br>') if footer_text is not None else default_footer
 
     counterparty_name = req.counterparty.short_name if req.counterparty else 'Запрос поставки'
@@ -352,6 +361,7 @@ async def create_request(
                 unit=it.unit,
                 name=it.name,
                 note=it.note,
+                allow_analogs=it.allow_analogs,
             )
 
         db.add(row)

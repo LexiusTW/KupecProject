@@ -14,6 +14,7 @@ class Buyer(Base):
     is_active = Column(Boolean(), default=True)
     role = Column(String, nullable=False)
     delivery_address = Column(String(500), nullable=True)
+    email_footer = Column(Text, nullable=True)
 
 
 class Seller(Base):

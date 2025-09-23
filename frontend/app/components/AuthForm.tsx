@@ -29,7 +29,7 @@ export default function AuthForm() {
           credentials: 'include',
         });
         if (r.ok) {
-          const nextUrl = searchParams.get('next') || '/search';
+          const nextUrl = searchParams.get('next') || '/request';
           router.replace(nextUrl);
         }
       } catch {
@@ -56,7 +56,7 @@ export default function AuthForm() {
         throw new Error(er.detail || 'Неверный логин или пароль');
       }
 
-      const nextUrl = searchParams.get('next') || '/search';
+      const nextUrl = searchParams.get('next') || '/request';
       router.push(nextUrl);
     } catch (e: any) {
       setError(e.message || 'Ошибка входа. Попробуйте снова.');

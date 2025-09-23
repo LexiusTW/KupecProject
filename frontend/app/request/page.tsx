@@ -58,6 +58,7 @@ type GenericRow = {
   dims?: string;  // размеры/характеристики
   unit?: string;   // ед. изм.
   qty?: string;
+  allowAnalogs?: boolean;
   comment?: string;
 };
 
@@ -90,6 +91,7 @@ type SavedGenericItem = {
   dims?: string | null; // размеры/характеристики
   unit?: string | null;  // ед. изм.
   quantity: number | null;
+  allow_analogs: boolean;
   comment: string;
 };
 
@@ -159,11 +161,11 @@ type EmailGroup = {
   manualEmails: string;
 };
 
-type MetalEmailEntry = {
+type EmailEntry = {
   id: string;
   email: string;
   selectedItemIds: Set<string>;
-  supplierId: number | null;
+  supplierId: number | null; // Это поле больше не используется в UI, но оставляем для структуры
 };
 
 const clsInput =
@@ -305,6 +307,7 @@ const PreviewItemsTable = ({ items }: { items: SavedItem[] }) => {
           <tr>
             <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Наименование</th>
             <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Размеры, характеристики</th>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Аналоги</th>
             <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Ед. изм.</th>
             <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Количество</th>
             <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Комментарий</th>
@@ -317,6 +320,7 @@ const PreviewItemsTable = ({ items }: { items: SavedItem[] }) => {
               <tr key={item.id} className="border-t border-gray-200">
                 <td className="p-2 align-top">{genericItem.name}</td>
                 <td className="p-2 align-top">{genericItem.dims || '—'}</td>
+                <td className="p-2 align-top">{genericItem.allow_analogs ? 'Да' : 'Нет'}</td>
                 <td className="p-2 align-top whitespace-nowrap">{genericItem.unit || 'шт.'}</td>
                 <td className="p-2 align-top whitespace-nowrap">{genericItem.quantity}</td>
                 <td className="p-2 align-top">{genericItem.comment || '—'}</td>
@@ -335,6 +339,7 @@ const PreviewItemsTable = ({ items }: { items: SavedItem[] }) => {
           <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Категория</th>
           <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Наименование</th>
           <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Характеристики</th>
+          <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Аналоги</th>
           <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Кол-во</th>
           <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Комментарий</th>
         </tr>
@@ -348,6 +353,7 @@ const PreviewItemsTable = ({ items }: { items: SavedItem[] }) => {
                 <td className="p-2 align-top">Металлопрокат</td>
                 <td className="p-2 align-top">{metalItem.category}</td>
                 <td className="p-2 align-top">{[metalItem.size, metalItem.stamp, metalItem.state_standard].filter(Boolean).join(', ')}</td>
+                <td className="p-2 align-top">{metalItem.allow_analogs ? 'Да' : 'Нет'}</td>
                 <td className="p-2 align-top whitespace-nowrap">{metalItem.quantity} {metalItem.unit || 'шт.'}</td>
                 <td className="p-2 align-top">{metalItem.comment || '—'}</td>
               </tr>
@@ -359,6 +365,7 @@ const PreviewItemsTable = ({ items }: { items: SavedItem[] }) => {
               <td className="p-2 align-top">{genericItem.category}</td>
               <td className="p-2 align-top">{genericItem.name}</td>
               <td className="p-2 align-top">{genericItem.dims || '—'}</td>
+              <td className="p-2 align-top">{genericItem.allow_analogs ? 'Да' : 'Нет'}</td>
               <td className="p-2 align-top whitespace-nowrap">{genericItem.quantity} {genericItem.unit || 'шт.'}</td>
               <td className="p-2 align-top">{genericItem.comment || '—'}</td>
             </tr>
@@ -374,6 +381,7 @@ export default function RequestPage() {
   const [title, setTitle] = useState('');
   const [deliveryAt, setDeliveryAt] = useState('');
   const [address, setAddress] = useState('');
+  const [emailFooter, setEmailFooter] = useState('С уважением, Пользователь!'); // Default value
   const [headerErrors, setHeaderErrors] = useState<HeaderErrors>({});
 
   const [isLoading, setIsLoading] = useState(true); // Общее состояние загрузки страницы
@@ -429,38 +437,29 @@ export default function RequestPage() {
   const [showSendModal, setShowSendModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailPreviews, setEmailPreviews] = useState<{recipients: string, header: string, footer: string, items: SavedItem[]}[]>([]);
-  const [sendCategoryManual, setSendCategoryManual] = useState<Record<string, string>>({});
   // Состояния для модального окна рассылки
   const [sendCategoryEnabled, setSendCategoryEnabled] = useState<Record<string, boolean>>({});
-  const [sendCategorySupplier, setSendCategorySupplier] = useState<Record<string, number | null>>({});
-  const [metalSendConfig, setMetalSendConfig] = useState<Record<string, MetalEmailEntry[]>>({});
-  // Опции поставщиков для каждой категории (получаем с сервера /suppliers/by-category)
+  const [emailGroupsConfig, setEmailGroupsConfig] = useState<Record<string, EmailEntry[]>>({});
   const [sendCategoryOptions, setSendCategoryOptions] = useState<Record<string, Supplier[]>>({});
 
   const handleOpenSendModal = () => {
     const initialEnabledState: Record<string, boolean> = {};
-    const initialMetalConfig: Record<string, MetalEmailEntry[]> = {};
-    const initialManualEmails: Record<string, string> = {};
+    const initialEmailGroups: Record<string, EmailEntry[]> = {};
 
     cats.forEach(cat => {
       if (cat.saved.length > 0) {
         initialEnabledState[cat.id] = true;
-        if (cat.kind === 'metal') {
-          initialMetalConfig[cat.id] = [{
-            id: crypto.randomUUID(),
-            email: '',
-            supplierId: null,
-            selectedItemIds: new Set(cat.saved.map(item => item.id)),
-          }];
-        } else {
-          initialManualEmails[cat.id] = '';
-        }
+        initialEmailGroups[cat.id] = [{
+          id: crypto.randomUUID(),
+          email: '',
+          supplierId: null,
+          selectedItemIds: new Set(cat.saved.map(item => item.id)),
+        }];
       }
     });
 
     setSendCategoryEnabled(initialEnabledState);
-    setMetalSendConfig(initialMetalConfig);
-    setSendCategoryManual(initialManualEmails);
+    setEmailGroupsConfig(initialEmailGroups);
     setShowSendModal(true);
   };
 
@@ -475,27 +474,17 @@ export default function RequestPage() {
     const enabledCats = cats.filter(cat => cat.saved.length > 0 && sendCategoryEnabled[cat.id]);
 
     enabledCats.forEach(cat => {
-      if (cat.kind === 'metal') {
-        const metalEmails = metalSendConfig[cat.id] || [];
-        metalEmails.forEach(entry => {
-          const email = entry.email.trim();
-          if (email && entry.selectedItemIds.size > 0) {
-            if (!recipientGroups[email]) {
-              recipientGroups[email] = [];
-            }
-            const itemsToSend = cat.saved.filter(item => entry.selectedItemIds.has(item.id));
-            recipientGroups[email].push(...itemsToSend);
-          }
-        });
-      } else {
-        const email = (sendCategoryManual[cat.id] || '').trim();
-        if (email) {
+      const emailEntries = emailGroupsConfig[cat.id] || [];
+      emailEntries.forEach(entry => {
+        const email = entry.email.trim();
+        if (email && entry.selectedItemIds.size > 0) {
           if (!recipientGroups[email]) {
             recipientGroups[email] = [];
           }
-          recipientGroups[email].push(...cat.saved);
+          const itemsToSend = cat.saved.filter(item => entry.selectedItemIds.has(item.id));
+          recipientGroups[email].push(...itemsToSend);
         }
-      }
+      });
     });
 
     const previews = Object.entries(recipientGroups).map(([email, items]) => {
@@ -503,7 +492,8 @@ export default function RequestPage() {
       const uniqueItems = Array.from(new Map(items.map(item => [item.id, item])).values());
 
       const header = `Здравствуйте,\n\nПросим предоставить коммерческое предложение по следующим позициям:`;
-      const footer = `\nС уважением,\n${selectedCp?.director || 'Покупатель'}`;
+      const footer = `
+${emailFooter}`;
 
       return {
         recipients: email,
@@ -514,7 +504,7 @@ export default function RequestPage() {
     });
 
     setEmailPreviews(previews);
-  }, [showSendModal, cats, title, selectedCp, sendCategoryEnabled, sendCategorySupplier, sendCategoryManual, suppliers, sendCategoryOptions, metalSendConfig]);
+  }, [showSendModal, cats, title, selectedCp, sendCategoryEnabled, emailGroupsConfig]);
   const [notifications, setNotifications] = useState<Omit<NotificationProps, 'onDismiss'>[]>([]);
 
   const handlePreviewChange = (index: number, part: 'header' | 'footer', value: string) => {
@@ -537,13 +527,14 @@ export default function RequestPage() {
       setIsLoading(true);
       try {
         // Запускаем все запросы параллельно
-        const [addressRes, counterpartiesRes, suppliersRes, categoriesRes, stampsRes, gostsRes] = await Promise.all([
+        const [addressRes, counterpartiesRes, suppliersRes, categoriesRes, stampsRes, gostsRes, footerRes] = await Promise.all([
           fetch(`${API_BASE_URL}/api/v1/users/me/address`, { credentials: 'include' }).catch(() => null),
           fetch(`${API_BASE_URL}/api/v1/counterparties`, { credentials: 'include' }).catch(() => null),
           fetch(`${API_BASE_URL}/api/v1/suppliers/my`, { credentials: 'include' }).catch(() => null),
           fetch(`${API_BASE_URL}/api/v1/categories`, { credentials: 'include' }).catch(() => null),
           fetch(`${API_BASE_URL}/api/v1/stamps`, { credentials: 'include' }).catch(() => null),
           fetch(`${API_BASE_URL}/api/v1/gosts`, { credentials: 'include' }).catch(() => null),
+          fetch(`${API_BASE_URL}/api/v1/users/me/footer`, { credentials: 'include' }).catch(() => null),
         ]);
 
         // Обрабатываем результаты
@@ -562,11 +553,22 @@ export default function RequestPage() {
           setSuppliers(await suppliersRes.json());
         }
 
-        const [catData, stpData, gstData] = await Promise.all([
+        const [catData, stpData, gstData, footerData] = await Promise.all([
           categoriesRes && categoriesRes.ok ? categoriesRes.json() : [],
           stampsRes && stampsRes.ok ? stampsRes.json() : [],
           gostsRes && gostsRes.ok ? gostsRes.json() : [],
+          footerRes && footerRes.ok ? footerRes.json() : { email_footer: 'С уважением, Пользователь!' },
         ]);
+
+        if (footerRes && footerRes.ok) {
+            setEmailFooter(footerData.email_footer || 'С уважением, Пользователь!');
+        }
+
+        setOpts({
+          categories: catData ?? [],
+          grades: stpData ?? [],
+          standards: gstData ?? [],
+        });
 
         setOpts({
           categories: catData ?? [],
@@ -671,12 +673,25 @@ export default function RequestPage() {
   };
 
   useEffect(() => {
-    const q = cpDadataQuery.trim();
-    if (!cpDadataFocus || q.length < 2) { if (!cpDadataFocus) setCpDadataSugg([]); return; }
+    const fetchAllCategorySuppliers = async () => {
+      const uniqueCategories = [...new Set(cats.map(c => c.title.trim()).filter(Boolean))];
+      const promises = uniqueCategories.map(catTitle => 
+        fetchSuppliersByCategory(catTitle).then(suppliers => ({ [catTitle]: suppliers }))
+      );
+      const results = await Promise.all(promises);
+      const suppliersMap = results.reduce((acc, curr) => ({ ...acc, ...curr }), {});
+      
+      const finalMap: Record<string, Supplier[]> = {};
+      cats.forEach(cat => {
+        finalMap[cat.id] = suppliersMap[cat.title.trim()] || [];
+      });
+      setSendCategoryOptions(finalMap);
+    };
 
-    const t = setTimeout(() => fetchPartySuggest(q).then(setCpDadataSugg), 300);
-    return () => clearTimeout(t);
-  }, [cpDadataQuery, cpDadataFocus]);
+    if (cats.length > 0) {
+      fetchAllCategorySuppliers();
+    }
+  }, [cats]);
   useEffect(() => {
     const q = addrQuery.trim();
     if (!addrFocus || q.length < 3) { if (!addrFocus) setAddrSugg([]); return; }
@@ -991,7 +1006,7 @@ export default function RequestPage() {
       if (c.kind === 'metal') {
         const m = row as MetalRow;
         if (!m.mCategory || !m.qty) {
-          addNotification({ type: 'warning', title: 'Неполные данные', message: 'Для металлопроката укажите Категорию и Количество.' });
+          addNotification({ type: 'warning', title: 'Неполные данные', message: 'Укажите Категорию и Количество.' });
           return c;
         }
         item = {
@@ -1009,7 +1024,7 @@ export default function RequestPage() {
       } else { // generic
         const g = row as GenericRow;
         if (!g.name || !g.qty) {
-          addNotification({ type: 'warning', title: 'Неполные данные', message: 'Для прочей позиции укажите Наименование и Количество.' });
+          addNotification({ type: 'warning', title: 'Неполные данные', message: 'Укажите Наименование и Количество.' });
           return c;
         }
         item = {
@@ -1020,6 +1035,7 @@ export default function RequestPage() {
           dims: g.dims || null,
           unit: g.unit || null,
           quantity: g.qty ? Number(g.qty) : null,
+          allow_analogs: !!g.allowAnalogs,
           comment: g.comment || '',
         };
       }
@@ -1037,7 +1053,7 @@ export default function RequestPage() {
   const validateHeader = (): boolean => {
     const errors: HeaderErrors = {};
     if (!title.trim()) errors.title = 'Название заявки обязательно';
-    if (!deliveryAt) errors.deliveryAt = 'Дата и время обязательны';
+    if (!deliveryAt) errors.deliveryAt = 'Дата обязательна';
     if (!address.trim()) errors.address = 'Адрес поставки обязателен';
     if (!selectedCp) errors.counterparty = 'Контрагент обязателен';
 
@@ -1121,21 +1137,13 @@ export default function RequestPage() {
 
     // Добавляем ID поставщиков
     enabledCats.forEach(cat => {
-        if (cat.kind === 'metal') {
-            const metalEmails = metalSendConfig[cat.id] || [];
-            metalEmails.forEach(entry => {
-                const email = entry.email.trim();
-                if (email && entry.supplierId && recipientData.has(email)) {
-                    recipientData.get(email)!.supplierIds.add(entry.supplierId);
-                }
-            });
-        } else { // generic
-            const supplierId = sendCategorySupplier[cat.id];
-            const manualEmail = (sendCategoryManual[cat.id] || '').trim();
-            if (manualEmail && supplierId && recipientData.has(manualEmail)) {
-                recipientData.get(manualEmail)!.supplierIds.add(supplierId);
-            }
+      const emailEntries = emailGroupsConfig[cat.id] || [];
+      emailEntries.forEach(entry => {
+        const email = entry.email.trim();
+        if (email && entry.supplierId && recipientData.has(email)) {
+          recipientData.get(email)!.supplierIds.add(entry.supplierId);
         }
+      });
     });
 
     const groupsPayload = Array.from(recipientData.entries()).map(([email, data]) => {
@@ -1184,10 +1192,8 @@ export default function RequestPage() {
       setDeliveryAt('');
       setSelectedCp(null);
       setCpSearchQuery('');
-      setSendCategoryManual({});
+      setEmailGroupsConfig({});
       setSendCategoryEnabled({});
-      setSendCategorySupplier({});
-      setMetalSendConfig({});
       setShowSendModal(false);
     } catch (e: any) {
       addNotification({ type: 'error', title: 'Ошибка отправки', message: e.message || String(e) });
@@ -1196,8 +1202,8 @@ export default function RequestPage() {
     }
   };
 
-  const addMetalEmail = (catId: string) => {
-    setMetalSendConfig(prev => ({
+  const addEmailEntry = (catId: string) => {
+    setEmailGroupsConfig(prev => ({
       ...prev,
       [catId]: [
         ...(prev[catId] || []),
@@ -1211,15 +1217,15 @@ export default function RequestPage() {
     }));
   };
 
-  const removeMetalEmail = (catId: string, entryId: string) => {
-    setMetalSendConfig(prev => ({
+  const removeEmailEntry = (catId: string, entryId: string) => {
+    setEmailGroupsConfig(prev => ({
       ...prev,
       [catId]: (prev[catId] || []).filter(entry => entry.id !== entryId),
     }));
   };
 
-  const updateMetalEmailEntry = (catId: string, entryId: string, field: keyof MetalEmailEntry, value: any) => {
-    setMetalSendConfig(prev => ({
+  const updateEmailEntry = (catId: string, entryId: string, field: keyof EmailEntry, value: any) => {
+    setEmailGroupsConfig(prev => ({
       ...prev,
       [catId]: (prev[catId] || []).map(entry =>
         entry.id === entryId ? { ...entry, [field]: value } : entry
@@ -1274,9 +1280,9 @@ export default function RequestPage() {
                     {headerErrors.title && <p className="text-xs text-red-600 mt-1">{headerErrors.title}</p>}
                   </div>
                   <div className="lg:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Дата и время поставки*</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Дата поставки*</label>
                     <input
-                      type="datetime-local"
+                      type="date"
                       className={headerErrors.deliveryAt ? clsInputError : clsInput}
                       value={deliveryAt}
                       onChange={(e) => { setDeliveryAt(e.target.value); if (headerErrors.deliveryAt) setHeaderErrors(p => ({ ...p, deliveryAt: undefined })); }}
@@ -1547,106 +1553,89 @@ export default function RequestPage() {
                 <div className="space-y-3">
                   {cats.filter(c => c.saved.length > 0).map(cat => {
                     const enabled = !!sendCategoryEnabled[cat.id];
-                    const options = sendCategoryOptions[cat.id] ?? suppliers;
+                    const emailEntries = emailGroupsConfig[cat.id] || [];
+                    const options = suppliers;
 
-                    if (cat.kind === 'metal') {
-                      const emailEntries = metalSendConfig[cat.id] || [];
-                      return (
-                        <div key={cat.id} className="flex items-start gap-3 p-3 border rounded-md">
-                          <div className="pt-1">
-                            <input type="checkbox" checked={enabled} onChange={() => setSendCategoryEnabled(prev => ({ ...prev, [cat.id]: !enabled }))} />
-                          </div>
-                          <div className="flex-1 space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div className="font-medium">{cat.title}</div>
-                              <div className="text-sm text-gray-500">{cat.saved.length} позиций</div>
-                            </div>
-                            {emailEntries.map((entry, index) => (
-                              <div key={entry.id} className="p-3 bg-gray-50 rounded-md space-y-3">
-                                <div>
-                                  <label className="text-xs text-gray-600">Поставщик</label>
-                                  <select className={clsInput} value={entry.supplierId ?? ''} onChange={(e) => {
-                                      const supplierId = e.target.value ? Number(e.target.value) : null;
-                                      const supplier = options.find(s => s.id === supplierId);
-                                      updateMetalEmailEntry(cat.id, entry.id, 'supplierId', supplierId);
-                                      updateMetalEmailEntry(cat.id, entry.id, 'email', supplier?.email || '');
-                                    }} disabled={!enabled}>
-                                    <option value=''>Выбрать поставщика...</option>
-                                    {options.map(s => (
-                                      <option key={s.id} value={s.id}>{s.short_name}{s.inn ? ` (ИНН: ${s.inn})` : ''}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
-                                  <div>
-                                    <label className="text-xs text-gray-600">E-mail для отправки</label>
-                                    <input
-                                      className={clsInput}
-                                      placeholder="contact@company.ru"
-                                      value={entry.email}
-                                      onChange={(e) => updateMetalEmailEntry(cat.id, entry.id, 'email', e.target.value)}
-                                      disabled={!enabled}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-600">Позиции</label>
-                                    <ItemSelectionDropdown
-                                      items={cat.saved}
-                                      selectedIds={entry.selectedItemIds}
-                                      onSelectionChange={(ids) => updateMetalEmailEntry(cat.id, entry.id, 'selectedItemIds', ids)}
-                                      catKind={cat.kind}
-                                      disabled={!enabled}
-                                    />
-                                  </div>
-                                </div>
-                                {emailEntries.length > 1 && (
-                                  <div className="text-right">
-                                    <button type="button" onClick={() => removeMetalEmail(cat.id, entry.id)} className="text-red-500 text-sm hover:text-red-700" disabled={!enabled}>Удалить</button>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                            <button type="button" onClick={() => addMetalEmail(cat.id)} className="text-sm text-emerald-600 hover:text-emerald-700" disabled={!enabled}>+ Добавить еще email</button>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    const selectedSupplierId = sendCategorySupplier[cat.id] ?? null;
                     return (
                       <div key={cat.id} className="flex items-start gap-3 p-3 border rounded-md">
                         <div className="pt-1">
                           <input type="checkbox" checked={enabled} onChange={() => setSendCategoryEnabled(prev => ({ ...prev, [cat.id]: !enabled }))} />
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 space-y-3">
                           <div className="flex items-center justify-between">
                             <div className="font-medium">{cat.title}</div>
                             <div className="text-sm text-gray-500">{cat.saved.length} позиций</div>
                           </div>
-                          <div className="mt-2">
-                            <select className={clsInput} value={selectedSupplierId ?? ''} onChange={(e) => {
-                                const supplierId = e.target.value ? Number(e.target.value) : null;
-                                setSendCategorySupplier(prev => ({ ...prev, [cat.id]: supplierId }));
-                                const supplier = options.find(s => s.id === supplierId);
-                                setSendCategoryManual(prev => ({ ...prev, [cat.id]: supplier?.email || '' }));
-                              }} disabled={!enabled}>
-                              <option value=''>Выбрать поставщика...</option>
-                              {options.map(s => (
-                                <option key={s.id} value={s.id}>{s.short_name}{s.inn ? ` (ИНН: ${s.inn})` : ''}</option>
-                              ))}
-                            </select>
-                            <div className="mt-2">
-                                <label className="text-xs text-gray-600">E-mail для отправки</label>
-                                <input
-                                  className={clsInput}
-                                  placeholder="contact@company.ru"
-                                  value={sendCategoryManual[cat.id] ?? ''}
-                                  onChange={(e) => setSendCategoryManual(prev => ({ ...prev, [cat.id]: e.target.value }))}
-                                  disabled={!enabled}
-                                />
-                                <p className="text-xs text-gray-500 mt-1">Email поставщика подставляется автоматически, но вы можете его изменить.</p>
+                          {emailEntries.map((entry, index) => (
+                            <div key={entry.id} className={`p-3 rounded-md ${index > 0 ? 'mt-2' : ''} bg-gray-50`}>
+                              {/* Для первой строки показываем выбор поставщика */}
+                              {index === 0 && (
+                                <div className="mb-3">
+                                  <label className="text-xs text-gray-600">Поставщик (необязательно)</label>
+                                  <select
+                                    className={clsInput}
+                                    value={entry.supplierId ?? ''}
+                                    onChange={(e) => {
+                                      const supplierId = e.target.value ? Number(e.target.value) : null;
+                                      const supplier = options.find(s => s.id === supplierId);
+                                      updateEmailEntry(cat.id, entry.id, 'supplierId', supplierId);
+                                      updateEmailEntry(cat.id, entry.id, 'email', supplier?.email || '');
+                                    }}
+                                    disabled={!enabled}
+                                  >
+                                    <option value="">Выбрать из списка моих поставщиков...</option>
+                                    {options.map(s => (
+                                      <option key={s.id} value={s.id}>{s.short_name}{s.inn ? ` (ИНН: ${s.inn})` : ''}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+
+                              {/* Компактная строка для email и позиций */}
+                              <div className="flex flex-wrap items-end gap-3">
+                                <div className="flex-grow min-w-[250px]">
+                                  <label className="text-xs text-gray-600">
+                                    {index === 0 ? 'E-mail поставщика или вручную' : 'Дополнительный E-mail'}
+                                  </label>
+                                  <input
+                                    className={clsInput}
+                                    placeholder="contact@company.ru"
+                                    value={entry.email}
+                                    readOnly={index === 0 && entry.supplierId !== null}
+                                    onChange={(e) => {
+                                      if (index === 0 && entry.supplierId !== null) return;
+                                      updateEmailEntry(cat.id, entry.id, 'email', e.target.value);
+                                    }}
+                                    disabled={!enabled}
+                                  />
+                                </div>
+                                <div className="flex-shrink-0 w-full sm:w-auto">
+                                  <label className="text-xs text-gray-600">Позиции</label>
+                                  <ItemSelectionDropdown
+                                    items={cat.saved}
+                                    selectedIds={entry.selectedItemIds}
+                                    onSelectionChange={(ids) => updateEmailEntry(cat.id, entry.id, 'selectedItemIds', ids)}
+                                    catKind={cat.kind}
+                                    disabled={!enabled}
+                                  />
+                                </div>
+                                {emailEntries.length > 1 ? (
+                                   <button
+                                      type="button"
+                                      onClick={() => removeEmailEntry(cat.id, entry.id)}
+                                      className="px-3 py-2 text-red-600 hover:text-red-800 disabled:text-gray-400 self-end"
+                                      title="Удалить получателя"
+                                      disabled={!enabled}
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
+                                      </svg>
+                                    </button>
+                                ) : <div className="w-11"/> }
+                              </div>
                             </div>
-                          </div>
+                          ))}
+                          <button type="button" onClick={() => addEmailEntry(cat.id)} className="text-sm text-emerald-600 hover:text-emerald-700" disabled={!enabled}>+ Добавить еще email</button>
                         </div>
                       </div>
                     );
@@ -1802,6 +1791,7 @@ export default function RequestPage() {
                             <tr className="bg-gray-50">
                               <th className={th}>Наименование</th>
                               <th className={th}>Размеры/характеристики</th>
+                              <th className={th}>Аналоги</th>
                               <th className={th}>Ед. изм.</th>
                               <th className={th}>Количество</th>
                               <th className={th}>Комментарий</th>
@@ -1815,6 +1805,7 @@ export default function RequestPage() {
                                 <tr key={i} className="border-t">
                                   <td className={td}>{g.name}</td>
                                   <td className={td}>{g.dims || '—'}</td>
+                                  <td className={td}>{g.allow_analogs ? 'Да' : 'Нет'}</td>
                                   <td className={td}>{g.unit || '—'}</td>
                                   <td className={td}>{g.quantity ?? '—'}</td>
                                   <td className={td}>{g.comment || '—'}</td>
@@ -1831,71 +1822,73 @@ export default function RequestPage() {
                   {cat.editors.map(row => (
                     <div key={row._id} className="rounded-lg border border-gray-200 p-4">
                       {cat.kind === 'metal' ? (
-                        <div className="grid grid-cols-1 md:grid-cols-8 gap-3">
-                          <div>
-                            <div className="text-xs text-gray-600 mb-1">Категория (лист, труба)</div>
-                            <select className={clsInput}
-                              value={(row as MetalRow).mCategory || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'mCategory', e.target.value)}>
-                              <option value="">—</option>
-                              {opts.categories.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
+                        <>
+                          <div className="grid grid-cols-1 md:grid-cols-7 gap-3 items-start">
+                            <div>
+                              <div className="text-xs text-gray-600 mb-1">Категория</div>
+                              <select className={clsInput}
+                                value={(row as MetalRow).mCategory || ''}
+                                onChange={(e)=>setCell(cat.id, row._id, 'mCategory', e.target.value)}>
+                                <option value="">—</option>
+                                {opts.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <div className="text-xs text-gray-600 mb-1">Размер (1×1×1)</div>
+                              <input className={clsInput} placeholder="1x1x1"
+                                value={(row as MetalRow).size || ''}
+                                onChange={(e)=>setCell(cat.id, row._id, 'size', e.target.value.replace(/ /g, 'x'))} />
+                            </div>
+                            <div>
+                              <div className="text-xs text-gray-600 mb-1">ГОСТ</div>
+                              <select className={clsInput}
+                                value={(row as MetalRow).gost || ''}
+                                onChange={(e)=>setCell(cat.id, row._id, 'gost', e.target.value)}>
+                                <option value="">—</option>
+                                {opts.standards.map(s => <option key={s} value={s}>{s}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <div className="text-xs text-gray-600 mb-1">Марка</div>
+                              <select className={clsInput}
+                                value={(row as MetalRow).grade || ''}
+                                onChange={(e)=>setCell(cat.id, row._id, 'grade', e.target.value)}>
+                                <option value="">—</option>
+                                {opts.grades.map(s => <option key={s} value={s}>{s}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <div className="text-xs text-gray-600 mb-1">Аналоги</div>
+                              <select className={clsInput}
+                                value={(row as MetalRow).allowAnalogs ? 'Да' : 'Нет'}
+                                onChange={(e)=>setCell(cat.id, row._id,'allowAnalogs', e.target.value === 'Да')}> 
+                                <option>Нет</option>
+                                <option>Да</option>
+                              </select>
+                            </div>
+                            <div>
+                              <div className="text-xs text-gray-600 mb-1">Количество</div>
+                              <input className={clsInput} type="number" min="0" step="any"
+                                value={(row as MetalRow).qty || ''}
+                                onChange={(e)=>setCell(cat.id, row._id, 'qty', e.target.value)} />
+                            </div>
+                            <div>
+                              <div className="text-xs text-gray-600 mb-1">Ед. изм.</div>
+                              <select className={clsInput} value={(row as MetalRow).unit || ''} onChange={(e) => setCell(cat.id, row._id, 'unit', e.target.value)}>
+                                <option value="">—</option>
+                                {units.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                              </select>
+                            </div>
                           </div>
-                          <div>
-                            <div className="text-xs text-gray-600 mb-1">Размер (1×1×1)</div>
-                            <input className={clsInput} placeholder="1x1x1"
-                              value={(row as MetalRow).size || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'size', e.target.value)} />
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-600 mb-1">ГОСТ</div>
-                            <select className={clsInput}
-                              value={(row as MetalRow).gost || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'gost', e.target.value)}>
-                              <option value="">—</option>
-                              {opts.standards.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-600 mb-1">Марка</div>
-                            <select className={clsInput}
-                              value={(row as MetalRow).grade || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'grade', e.target.value)}>
-                              <option value="">—</option>
-                              {opts.grades.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-600 mb-1">Аналоги</div>
-                            <select className={clsInput}
-                              value={(row as MetalRow).allowAnalogs ? 'Да' : 'Нет'}
-                              onChange={(e)=>setCell(cat.id, row._id,'allowAnalogs', e.target.value === 'Да')}> 
-                              <option>Нет</option>
-                              <option>Да</option>
-                            </select>
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-600 mb-1">Количество</div>
-                            <input className={clsInput} type="number" min="0" step="any"
-                              value={(row as MetalRow).qty || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'qty', e.target.value)} />
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-600 mb-1">Ед. изм.</div>
-                            <select className={clsInput} value={(row as MetalRow).unit || ''} onChange={(e) => setCell(cat.id, row._id, 'unit', e.target.value)}>
-                              <option value="">—</option>
-                              {units.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
-                            </select>
-                          </div>
-                          <div>
+                          <div className="mt-3">
                             <div className="text-xs text-gray-600 mb-1">Комментарий</div>
                             <input className={clsInput}
                               value={(row as MetalRow).comment || ''}
                               onChange={(e)=>setCell(cat.id, row._id, 'comment', e.target.value)} />
                           </div>
-                        </div>
+                        </>
                       ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
                           <div className="md:col-span-2">
                             <div className="text-xs text-gray-600 mb-1">Наименование товаров / работ / услуг</div>
                             <input className={clsInput}
@@ -1907,6 +1900,15 @@ export default function RequestPage() {
                             <input className={clsInput}
                               value={(row as GenericRow).dims || ''}
                               onChange={(e)=>setCell(cat.id, row._id, 'dims', e.target.value)} />
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Аналоги</div>
+                            <select className={clsInput}
+                              value={(row as GenericRow).allowAnalogs ? 'Да' : 'Нет'}
+                              onChange={(e)=>setCell(cat.id, row._id,'allowAnalogs', e.target.value === 'Да')}>
+                              <option>Нет</option>
+                              <option>Да</option>
+                            </select>
                           </div>
                           <div>
                             <div className="text-xs text-gray-600 mb-1">Ед. изм.</div>
@@ -1921,7 +1923,7 @@ export default function RequestPage() {
                               value={(row as GenericRow).qty || ''}
                               onChange={(e)=>setCell(cat.id, row._id, 'qty', e.target.value)} />
                           </div>
-                          <div className="md:col-span-5">
+                          <div className="md:col-span-6">
                             <div className="text-xs text-gray-600 mb-1">Комментарий</div>
                             <input className={clsInput}
                               value={(row as GenericRow).comment || ''}

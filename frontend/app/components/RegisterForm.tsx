@@ -60,7 +60,7 @@ export default function RegisterForm() {
         throw new Error(er.detail || 'Ошибка регистрации');
       }
 
-      router.push('/search');
+      router.push('/request');
     } catch (e: any) {
       setError(e.message || 'Ошибка регистрации. Попробуйте снова.');
     } finally {

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import get_password_hash, verify_password
 from app.models.user import Buyer, Seller
+from app.schemas.user import UserProfileUpdate
 
 UserLike = Union[Buyer, Seller]
 
@@ -60,3 +61,13 @@ def authenticate(db: Session, *, login: str, password: str) -> Optional[UserLike
     if not verify_password(password, user.hashed_password):
         return None
     return user
+
+def update_buyer_profile(db: Session, *, db_obj: Buyer, obj_in: UserProfileUpdate) -> Buyer:
+    if obj_in.delivery_address is not None:
+        db_obj.delivery_address = obj_in.delivery_address
+    if obj_in.email_footer is not None:
+        db_obj.email_footer = obj_in.email_footer
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj

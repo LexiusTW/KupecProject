@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, ChangeEvent, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useState, ChangeEvent, useCallback, useMemo, useRef, KeyboardEvent } from 'react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import Link from 'next/link';
@@ -69,10 +69,10 @@ type Supplier = {
   kpp?: string;
   okpo?: string;
   okato?: string;
-  contact_person: string; // ФИО контактного лица
+  director: string; // ФИО контактного лица
   phone_number: string;   // Телефон
   email: string;          // Почта
-  category: string;       // Категория поставщика (именительный падеж)
+  category: string[];       // Категории поставщика (массив строк)
 };
 
 type Counterparty = {
@@ -89,13 +89,16 @@ type Counterparty = {
   bank_bik?: string;
   bank_corr?: string;
   // Новые поля
-  contact_person?: string;
+  director?: string;
   phone?: string;
   email?: string;
 };
 
 type CounterpartyCreateForm = Partial<Omit<Counterparty, 'id'>>;
 type CounterpartyFormErrors = { [K in keyof CounterpartyCreateForm]?: string };
+
+// Типы для подсказок DaData (аналогично request/page.tsx)
+type DaDataAddr = { value: string; unrestricted_value?: string };
 
 
 // Типы для подсказок DaData (аналогично request/page.tsx)
@@ -111,13 +114,12 @@ type DaDataParty = {
   legal_address?: string;
 };
 
-type DaDataAddr = { value: string; unrestricted_value?: string };
 
 
 type SupplierCreateForm = Partial<Omit<Supplier, 'id'>>;
 type SupplierFormErrors = { [K in keyof SupplierCreateForm]?: string };
 
-type Tab = 'requests' | 'suppliers' | 'counterparties';
+type Tab = 'requests' | 'suppliers' | 'counterparties' | 'profile';
 
 // --- Компонент для отображения списка заявок ---
 const RequestsList = () => {
@@ -295,7 +297,7 @@ const RequestsList = () => {
                 Контрагент{getSortIndicator('counterparty')}
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Позиции
+                Количество
               </th>
               <th scope="col" className="relative px-6 py-3">
                 <span className="sr-only">Открыть</span>
@@ -320,11 +322,7 @@ const RequestsList = () => {
                     </div>
                   ) : '—'}
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
-                  <div className="truncate w-48" title={request.items.map(it => it.kind === 'metal' ? it.category : it.name).join(', ')}>
-                    {request.items.map(it => it.kind === 'metal' ? it.category : it.name).join(', ')}
-                  </div>
-                </td>
+                <td className="px-6 py-4 text-sm text-gray-500 text-center">{request.items.length}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <Link href={`/account/requests/${request.id}`} className="text-amber-600 hover:text-amber-900">
                     Открыть
@@ -338,6 +336,519 @@ const RequestsList = () => {
     </div>
   );
 }
+
+// --- Компонент для отображения списка поставщиков ---
+const SuppliersList = ({ suppliers, onEdit, loading, error }: { suppliers: Supplier[], onEdit: (supplier: Supplier) => void, loading: boolean, error: string | null }) => {
+  const [sort, setSort] = useState<{ key: keyof Supplier, order: 'asc' | 'desc' }>({ key: 'short_name', order: 'asc' });
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const handleSort = (key: keyof Supplier) => {
+    setSort(prev => ({
+      key,
+      order: prev.key === key && prev.order === 'asc' ? 'desc' : 'asc',
+    }));
+  };
+
+  const getSortIndicator = (key: string) => {
+    if (sort.key !== key) return null;
+    return sort.order === 'asc' ? ' ▲' : ' ▼';
+  };
+
+  const filteredAndSortedSuppliers = useMemo(() => {
+    return suppliers
+      .filter(s =>
+        s.short_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        s.inn.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+      .sort((a, b) => {
+        const aValue = a[sort.key] || '';
+        const bValue = b[sort.key] || '';
+        if (aValue < bValue) return sort.order === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sort.order === 'asc' ? 1 : -1;
+        return 0;
+      });
+  }, [suppliers, searchTerm, sort]);
+
+  if (loading) return <SkeletonLoader className="h-40 w-full" />;
+  if (error) return <div className="bg-white rounded-xl shadow p-6 text-red-600">{error}</div>;
+
+  return (
+    <div>
+      <div className="bg-white p-4 rounded-lg shadow mb-6">
+        <input
+          type="text"
+          placeholder="Поиск по наименованию или ИНН..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className={clsInput}
+        />
+      </div>
+      {suppliers.length === 0 && (
+        <div className="bg-white rounded-xl shadow p-6 text-center">
+          <p className="text-gray-700">У вас пока нет добавленных поставщиков.</p>
+        </div>
+      )}
+      {suppliers.length > 0 && !filteredAndSortedSuppliers.length && (
+         <div className="bg-white rounded-xl shadow p-6 text-center">
+           <p className="text-gray-700">Поставщики не найдены.</p>
+         </div>
+      )}
+      {filteredAndSortedSuppliers.length > 0 && (
+        <div className="bg-white rounded-xl shadow overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort('short_name')}>Наименование{getSortIndicator('short_name')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort('inn')}>ИНН{getSortIndicator('inn')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Категории</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Действия</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200 text-sm">
+              {filteredAndSortedSuppliers.map(s => (
+                <tr key={s.id}>
+                  <td className="px-6 py-4 whitespace-nowrap font-medium">{s.short_name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{s.inn}</td>
+                  <td className="px-6 py-4">
+                    {(s.category || []).slice(0, 4).join(', ')}
+                    {(s.category || []).length > 4 && '...'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <button onClick={() => onEdit(s)} className="text-amber-600 hover:underline text-sm">Изменить</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- Компонент для отображения списка контрагентов ---
+const CounterpartiesList = ({ counterparties, onEdit, loading, error }: { counterparties: Counterparty[], onEdit: (cp: Counterparty) => void, loading: boolean, error: string | null }) => {
+  const [sort, setSort] = useState<{ key: keyof Counterparty, order: 'asc' | 'desc' }>({ key: 'short_name', order: 'asc' });
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const handleSort = (key: keyof Counterparty) => {
+    setSort(prev => ({
+      key,
+      order: prev.key === key && prev.order === 'asc' ? 'desc' : 'asc',
+    }));
+  };
+
+  const getSortIndicator = (key: string) => {
+    if (sort.key !== key) return null;
+    return sort.order === 'asc' ? ' ▲' : ' ▼';
+  };
+
+  const filteredAndSortedCounterparties = useMemo(() => {
+    return counterparties
+      .filter(cp =>
+        cp.short_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        cp.inn.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+      .sort((a, b) => {
+        const aValue = a[sort.key] || '';
+        const bValue = b[sort.key] || '';
+        if (aValue < bValue) return sort.order === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sort.order === 'asc' ? 1 : -1;
+        return 0;
+      });
+  }, [counterparties, searchTerm, sort]);
+
+  if (loading) return <SkeletonLoader className="h-40 w-full" />;
+  if (error) return <div className="bg-white rounded-xl shadow p-6 text-red-600">{error}</div>;
+
+  return (
+    <div>
+       <div className="bg-white p-4 rounded-lg shadow mb-6">
+        <input
+          type="text"
+          placeholder="Поиск по наименованию или ИНН..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className={clsInput}
+        />
+      </div>
+      {counterparties.length === 0 && (
+        <div className="bg-white rounded-xl shadow p-6 text-center">
+          <p className="text-gray-700">У вас пока нет контрагентов.</p>
+        </div>
+      )}
+      {counterparties.length > 0 && !filteredAndSortedCounterparties.length && (
+         <div className="bg-white rounded-xl shadow p-6 text-center">
+           <p className="text-gray-700">Контрагенты не найдены.</p>
+         </div>
+      )}
+      {filteredAndSortedCounterparties.length > 0 && (
+        <div className="bg-white rounded-xl shadow overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort('short_name')}>Наименование{getSortIndicator('short_name')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort('inn')}>ИНН/КПП{getSortIndicator('inn')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort('legal_address')}>Юр. адрес{getSortIndicator('legal_address')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Контактное лицо</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Телефон</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Почта</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Действия</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200 text-sm">
+              {filteredAndSortedCounterparties.map(cp => (
+                <tr key={cp.id}>
+                  <td className="px-6 py-4 whitespace-nowrap font-medium">{cp.short_name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{cp.inn}{cp.kpp ? ` / ${cp.kpp}` : ''}</td>
+                  <td className="px-6 py-4">{cp.legal_address}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{cp.director || '—'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{cp.phone || '—'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{cp.email || '—'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <button onClick={() => onEdit(cp)} className="text-amber-600 hover:underline text-sm">Изменить</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ProfileSettings = ({ addNotification }: { addNotification: (notif: Omit<NotificationProps, 'id' | 'onDismiss'>) => void }) => {
+    const [login, setLogin] = useState('');
+    const [emailFooter, setEmailFooter] = useState('');
+    const [isEditingFooter, setIsEditingFooter] = useState(false);
+    const [footerLoading, setFooterLoading] = useState(false);
+    const [passwordForm, setPasswordForm] = useState({ old_password: '', new_password: '', confirm_password: '' });
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    // State for address field
+    const [address, setAddress] = useState('');
+    const [isEditingAddress, setIsEditingAddress] = useState(false);
+    const [addrLoading, setAddrLoading] = useState(false);
+    const [addrQuery, setAddrQuery] = useState('');
+    const [addrSugg, setAddrSugg] = useState<DaDataAddr[]>([]);
+    const [addrFocus, setAddrFocus] = useState(false);
+    const addrAbort = useRef<AbortController | null>(null);
+
+    useEffect(() => {
+        const fetchProfileData = async () => {
+            setLoading(true);
+            try {
+                const [meRes, addressRes, footerRes] = await Promise.all([
+                    fetch(`${API_BASE_URL}/api/v1/users/me`, { credentials: 'include' }).catch(() => null),
+                    fetch(`${API_BASE_URL}/api/v1/users/me/address`, { credentials: 'include' }).catch(() => null),
+                    fetch(`${API_BASE_URL}/api/v1/users/me/footer`, { credentials: 'include' }).catch(() => null),
+                ]);
+
+                if (meRes && meRes.ok) {
+                    const meData = await meRes.json();
+                    setLogin(meData.login || 'user@example.com'); // Fallback for login
+                } else {
+                    addNotification({ type: 'warning', title: 'Ошибка', message: 'Не удалось загрузить логин пользователя.' });
+                }
+
+                if (addressRes && addressRes.ok) {
+                    const addressData = await addressRes.json();
+                    const deliveryAddress = addressData.delivery_address || '';
+                    setAddress(deliveryAddress);
+                    setIsEditingAddress(!deliveryAddress);
+                } else {
+                     addNotification({ type: 'warning', title: 'Ошибка', message: 'Не удалось загрузить адрес доставки.' });
+                }
+
+                if (footerRes && footerRes.ok) {
+                    const footerData = await footerRes.json();
+                    setEmailFooter(footerData.email_footer || 'С уважением, Пользователь!');
+                } else {
+                    addNotification({ type: 'warning', title: 'Ошибка', message: 'Не удалось загрузить подвал для email.' });
+                }
+
+            } catch (e: any) {
+                setError(e.message);
+                addNotification({ type: 'error', title: 'Ошибка загрузки', message: e.message });
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchProfileData();
+    }, [addNotification]);
+
+    const fetchSuggest = useCallback(async (q: string) => {
+        addrAbort.current?.abort();
+        addrAbort.current = new AbortController();
+        setAddrLoading(true);
+        try {
+            const url = `${API_BASE_URL}/api/v1/suggest/address?q=${encodeURIComponent(q)}&count=5`;
+            const r = await fetch(url, { credentials: 'include', signal: addrAbort.current.signal });
+            if (!r.ok) return [];
+            const data = await r.json();
+            return (data?.suggestions ?? []).map((s: any) => ({ value: s.value, unrestricted_value: s.unrestricted_value }));
+        } catch {
+            return [];
+        } finally {
+            setAddrLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        const q = addrQuery.trim();
+        if (!addrFocus || q.length < 3) {
+            if (!addrFocus) setAddrSugg([]);
+            return;
+        }
+        const t = setTimeout(() => {
+            fetchSuggest(q).then(setAddrSugg);
+        }, 300);
+        return () => clearTimeout(t);
+    }, [addrQuery, addrFocus, fetchSuggest]);
+
+    const onPickAddress = (val: string) => {
+        setAddress(val);
+        setAddrQuery(val);
+        setAddrSugg([]);
+        setAddrFocus(false);
+    };
+
+    const handleSaveAddress = async () => {
+        setAddrLoading(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/v1/users/me/address`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ delivery_address: address }),
+            });
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || 'Не удалось сохранить адрес.');
+            }
+            addNotification({ type: 'success', title: 'Адрес сохранен' });
+            setIsEditingAddress(false);
+        } catch (e: any) {
+            addNotification({ type: 'error', title: 'Ошибка', message: e.message });
+        } finally {
+            setAddrLoading(false);
+        }
+    };
+
+    const handleSaveFooter = async () => {
+        setFooterLoading(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/v1/users/me/footer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ email_footer: emailFooter }),
+            });
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || 'Не удалось сохранить подвал.');
+            }
+            addNotification({ type: 'success', title: 'Подвал сохранен' });
+            setIsEditingFooter(false);
+        } catch (e: any) {
+            addNotification({ type: 'error', title: 'Ошибка', message: e.message });
+        } finally {
+            setFooterLoading(false);
+        }
+    };
+
+    const handlePasswordChange = (e: ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setPasswordForm(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleChangePassword = async () => {
+        if (passwordForm.new_password !== passwordForm.confirm_password) {
+            addNotification({ type: 'error', title: 'Ошибка', message: 'Новые пароли не совпадают.' });
+            return;
+        }
+        if (passwordForm.new_password.length < 8) {
+            addNotification({ type: 'error', title: 'Ошибка', message: 'Пароль должен быть не менее 8 символов.' });
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/v1/users/me/change-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    old_password: passwordForm.old_password,
+                    new_password: passwordForm.new_password,
+                    new_password_confirm: passwordForm.confirm_password,
+                }),
+            });
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || 'Не удалось сменить пароль.');
+            }
+            addNotification({ type: 'success', title: 'Пароль успешно изменен' });
+            setPasswordForm({ old_password: '', new_password: '', confirm_password: '' });
+        } catch (e: any) {
+            addNotification({ type: 'error', title: 'Ошибка', message: e.message });
+        }
+    };
+
+    if (loading) {
+        return <SkeletonLoader className="h-60 w-full" />;
+    }
+
+    if (error) {
+        return <div className="bg-white rounded-xl shadow p-6 text-red-600">{error}</div>;
+    }
+
+    return (
+        <div className="space-y-8">
+            {/* Account Info */}
+            <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-lg font-semibold mb-4">Данные аккаунта</h3>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Логин</label>
+                        <input type="text" value={login} readOnly className={`${clsInput} bg-gray-100`} />
+                    </div>
+                </div>
+            </div>
+
+            {/* Settings */}
+            <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-lg font-semibold mb-4">Настройки</h3>
+                <div className="space-y-4">
+                    <div>
+                        <label htmlFor="delivery_address" className="block text-sm font-medium text-gray-700">Адрес поставки по умолчанию</label>
+                        <div className="flex gap-2 items-start">
+                            <div className="relative flex-1">
+                                <input
+                                    id="delivery_address"
+                                    name="delivery_address"
+                                    value={address}
+                                    onChange={(e) => {
+                                        setAddress(e.target.value);
+                                        setAddrQuery(e.target.value);
+                                    }}
+                                    onFocus={() => setAddrFocus(true)}
+                                    onBlur={() => setTimeout(() => setAddrFocus(false), 200)}
+                                    className={clsInput}
+                                    placeholder="Начните вводить адрес..."
+                                    disabled={!isEditingAddress}
+                                />
+                                {addrFocus && isEditingAddress && addrSugg.length > 0 && (
+                                    <div className="absolute z-20 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
+                                        {addrSugg.map((s, i) => (
+                                            <button
+                                                type="button"
+                                                key={i}
+                                                onMouseDown={() => onPickAddress(s.unrestricted_value || s.value)}
+                                                className="block w-full text-left px-3 py-2 hover:bg-amber-50"
+                                            >
+                                                {s.unrestricted_value || s.value}
+                                            </button>
+                                        ))}
+                                        {addrLoading && <div className="px-3 py-2 text-xs text-gray-500">Загрузка...</div>}
+                                    </div>
+                                )}
+                            </div>
+                            {isEditingAddress ? (
+                                <button
+                                    onClick={handleSaveAddress}
+                                    disabled={addrLoading}
+                                    className="px-4 py-2 bg-amber-600 text-white rounded-md shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                                >
+                                    {addrLoading ? 'Сохранение...' : 'Сохранить'}
+                                </button>
+                            ) : (
+                                <button onClick={() => setIsEditingAddress(true)} className="px-4 py-2 border border-gray-300 rounded-md">
+                                    Изменить
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    <div>
+                        <label htmlFor="email_footer" className="block text-sm font-medium text-gray-700">Подвал для E-mail сообщений</label>
+                        <div className="flex gap-2 items-start">
+                            <textarea
+                                id="email_footer"
+                                name="email_footer"
+                                value={emailFooter}
+                                onChange={(e) => setEmailFooter(e.target.value)}
+                                className={clsInput}
+                                rows={4}
+                                placeholder="С уважением, ..."
+                                disabled={!isEditingFooter}
+                            />
+                            {isEditingFooter ? (
+                                <button
+                                    onClick={handleSaveFooter}
+                                    disabled={footerLoading}
+                                    className="px-4 py-2 bg-amber-600 text-white rounded-md shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                                >
+                                    {footerLoading ? 'Сохранение...' : 'Сохранить'}
+                                </button>
+                            ) : (
+                                <button onClick={() => setIsEditingFooter(true)} className="px-4 py-2 border border-gray-300 rounded-md">
+                                    Изменить
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Security */}
+            <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-lg font-semibold mb-4">Безопасность</h3>
+                <div className="space-y-4 max-w-md">
+                    <div>
+                        <label htmlFor="old_password"  className="block text-sm font-medium text-gray-700">Старый пароль</label>
+                        <input
+                            type="password"
+                            id="old_password"
+                            name="old_password"
+                            value={passwordForm.old_password}
+                            onChange={handlePasswordChange}
+                            className={clsInput}
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="new_password"  className="block text-sm font-medium text-gray-700">Новый пароль</label>
+                        <input
+                            type="password"
+                            id="new_password"
+                            name="new_password"
+                            value={passwordForm.new_password}
+                            onChange={handlePasswordChange}
+                            className={clsInput}
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="confirm_password"  className="block text-sm font-medium text-gray-700">Подтвердите новый пароль</label>
+                        <input
+                            type="password"
+                            id="confirm_password"
+                            name="confirm_password"
+                            value={passwordForm.confirm_password}
+                            onChange={handlePasswordChange}
+                            className={clsInput}
+                        />
+                    </div>
+                     <div className="text-right">
+                        <button onClick={handleChangePassword} className="px-4 py-2 bg-amber-600 text-white rounded-md shadow-sm hover:bg-amber-700">
+                            Сменить пароль
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 export default function AccountPage() {
   const [activeTab, setActiveTab] = useState<Tab>('requests');
@@ -355,11 +866,12 @@ export default function AccountPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [suppliersError, setSuppliersError] = useState<string | null>(null);
   const [showSupplierCreateModal, setShowSupplierCreateModal] = useState(false);
-  const [newSupplierForm, setNewSupplierForm] = useState<SupplierCreateForm>({});
+  const [newSupplierForm, setNewSupplierForm] = useState<SupplierCreateForm>({ category: [] });
   const [supplierFormErrors, setSupplierFormErrors] = useState<SupplierFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Режим редактирования: id редактируемого поставщика или null для создания
   const [editingSupplierId, setEditingSupplierId] = useState<number | null>(null);
+  const [categoryInput, setCategoryInput] = useState('');
   
   // Состояния для DaData поиска организаций
   const [dadataQuery, setDadataQuery] = useState('');
@@ -398,6 +910,68 @@ export default function AccountPage() {
   const [cpAddrFocus, setCpAddrFocus] = useState(false);
   const [cpAddrLoading, setCpAddrLoading] = useState(false);
   const cpAddrAbort = useRef<AbortController | null>(null);
+
+  // Состояния для сортировки и поиска поставщиков
+  const [supplierSort, setSupplierSort] = useState<{ key: keyof Supplier, order: 'asc' | 'desc' }>({ key: 'short_name', order: 'asc' });
+  const [supplierSearchTerm, setSupplierSearchTerm] = useState('');
+
+  // Состояния для сортировки и поиска контрагентов
+  const [counterpartySort, setCounterpartySort] = useState<{ key: keyof Counterparty, order: 'asc' | 'desc' }>({ key: 'short_name', order: 'asc' });
+  const [counterpartySearchTerm, setCounterpartySearchTerm] = useState('');
+
+  const filteredAndSortedSuppliers = useMemo(() => {
+    return suppliers
+      .filter(s =>
+        s.short_name.toLowerCase().includes(supplierSearchTerm.toLowerCase()) ||
+        s.inn.toLowerCase().includes(supplierSearchTerm.toLowerCase())
+      )
+      .sort((a, b) => {
+        const aValue = a[supplierSort.key] || '';
+        const bValue = b[supplierSort.key] || '';
+        if (aValue < bValue) return supplierSort.order === 'asc' ? -1 : 1;
+        if (aValue > bValue) return supplierSort.order === 'asc' ? 1 : -1;
+        return 0;
+      });
+  }, [suppliers, supplierSearchTerm, supplierSort]);
+
+  const filteredAndSortedCounterparties = useMemo(() => {
+    return counterparties
+      .filter(cp =>
+        cp.short_name.toLowerCase().includes(counterpartySearchTerm.toLowerCase()) ||
+        cp.inn.toLowerCase().includes(counterpartySearchTerm.toLowerCase())
+      )
+      .sort((a, b) => {
+        const aValue = a[counterpartySort.key] || '';
+        const bValue = b[counterpartySort.key] || '';
+        if (aValue < bValue) return counterpartySort.order === 'asc' ? -1 : 1;
+        if (aValue > bValue) return counterpartySort.order === 'asc' ? 1 : -1;
+        return 0;
+      });
+  }, [counterparties, counterpartySearchTerm, counterpartySort]);
+
+  const handleSupplierSort = (key: keyof Supplier) => {
+    setSupplierSort(prev => ({
+      key,
+      order: prev.key === key && prev.order === 'asc' ? 'desc' : 'asc',
+    }));
+  };
+
+  const getSupplierSortIndicator = (key: string) => {
+    if (supplierSort.key !== key) return null;
+    return supplierSort.order === 'asc' ? ' ▲' : ' ▼';
+  };
+
+  const handleCounterpartySort = (key: keyof Counterparty) => {
+    setCounterpartySort(prev => ({
+      key,
+      order: prev.key === key && prev.order === 'asc' ? 'desc' : 'asc',
+    }));
+  };
+
+  const getCounterpartySortIndicator = (key: string) => {
+    if (counterpartySort.key !== key) return null;
+    return counterpartySort.order === 'asc' ? ' ▲' : ' ▼';
+  };
 
 
   const handleSupplierFormChange = (field: keyof SupplierCreateForm, value: string | ChangeEvent<HTMLInputElement>) => {
@@ -444,9 +1018,24 @@ export default function AccountPage() {
 
       setNewSupplierForm(p => ({ ...p, phone_number: formattedValue }));
 
-    } else {
+    } else if (field !== 'category') {
       setNewSupplierForm(p => ({ ...p, [field]: val }));
     }
+  };
+
+  const handleCategoryInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      const newCategory = categoryInput.trim();
+      if (newCategory && !newSupplierForm.category?.includes(newCategory)) {
+        setNewSupplierForm(prev => ({ ...prev, category: [...(prev.category || []), newCategory] }));
+      }
+      setCategoryInput('');
+    }
+  };
+
+  const removeCategory = (categoryToRemove: string) => {
+    setNewSupplierForm(prev => ({ ...prev, category: prev.category?.filter(c => c !== categoryToRemove) }));
   };
 
   const validateSupplierForm = useCallback(() => {
@@ -460,10 +1049,12 @@ export default function AccountPage() {
     }
 
     // Контактная информация обязательна
-    if (!newSupplierForm.contact_person || newSupplierForm.contact_person.trim().length < 2) errors.contact_person = 'Обязательное поле';
+    if (!newSupplierForm.director || newSupplierForm.director.trim().length < 2) errors.director = 'Обязательное поле';
     if (!newSupplierForm.phone_number || newSupplierForm.phone_number.replace(/\D/g, '').length < 11) errors.phone_number = 'Некорректный номер телефона';
     if (!newSupplierForm.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newSupplierForm.email)) errors.email = 'Некорректный email';
-    if (!newSupplierForm.category || newSupplierForm.category.trim().length < 2) errors.category = 'Укажите категорию (пример: металлопрокат)';
+    if (!newSupplierForm.category || newSupplierForm.category.length === 0) {
+      errors.category = 'Укажите хотя бы одну категорию';
+    }
 
     // Теперь поля ОГРН, КПП, ОКПО, ОКАТО тоже обязательны
     if (!newSupplierForm.ogrn) {
@@ -503,23 +1094,18 @@ export default function AccountPage() {
   // Форматируем номер телефона (digits) в отображаемую маску +7 (xxx) xxx-xx-xx
   const formatPhoneForDisplay = (digits?: string | null) => {
     if (!digits) return '';
-    const d = digits.replace(/\D/g, '');
+    let d = digits.replace(/\D/g, '');
     if (!d) return '';
-    // Если в базе хранится в формате 8... или 7..., обеспечим 11 цифр
-    let dd = d;
-    if (dd.length === 10) dd = '7' + dd; // может быть без первой цифры
-    if (dd.length < 11) return dd;
+
+    if (d.startsWith('8')) d = '7' + d.slice(1);
+    if (d.startsWith('+7')) d = d.slice(1);
+    if (d.length === 10 && !d.startsWith('7')) d = '7' + d;
+
+    if (d.length !== 11 || !d.startsWith('7')) return digits; // Возвращаем как есть, если не стандарт
+
     const matrix = '+7 (___) ___-__-__';
-    let i = 0;
-    let formatted = matrix.replace(/./g, (char) => {
-      if (/[_\d]/.test(char) && i < dd.length - 1) {
-        return dd[++i];
-      } else if (i >= dd.length - 1) {
-        return '';
-      }
-      return char;
-    });
-    return formatted;
+    let i = 1; // Начинаем с 1, так как 7 уже в матрице
+    return matrix.replace(/_/g, () => d[i++] || '_');
   };
 
   // Сохранение (создание или обновление)
@@ -582,7 +1168,7 @@ export default function AccountPage() {
       }
 
       setShowSupplierCreateModal(false);
-      setNewSupplierForm({});
+      setNewSupplierForm({ category: [] });
       setSupplierFormErrors({});
       setEditingSupplierId(null);
     } catch (e: any) {
@@ -650,12 +1236,13 @@ export default function AccountPage() {
 
   const resetSupplierModal = () => {
     setShowSupplierCreateModal(false);
-    setNewSupplierForm({});
+    setNewSupplierForm({ category: [] });
     setSupplierFormErrors({});
     setDadataQuery('');
     setDadataSugg([]);
     setAddrQuery('');
     setAddrSugg([]);
+    setCategoryInput('');
   };
 
   // --- Эффекты загрузки данных ---
@@ -797,7 +1384,7 @@ export default function AccountPage() {
     } else if (!/^\d{1,20}$/.test(cpForm.okato)) {
       errors.okato = 'Некорректный формат';
     }
-    if (!cpForm.contact_person) errors.contact_person = 'Обязательное поле';
+    if (!cpForm.director) errors.director = 'Обязательное поле';
     if (!cpForm.phone) errors.phone = 'Обязательное поле';
     if (!cpForm.email) {
       errors.email = 'Обязательное поле';
@@ -898,10 +1485,10 @@ export default function AccountPage() {
 
   useEffect(() => {
     const qAddr = cpAddrQuery.trim();
-    if (cpAddrFocus && qAddr.length >= 3) {
+    if (addrFocus && qAddr.length >= 3) {
       const t = setTimeout(() => fetchCpAddrSuggest(qAddr).then(setCpAddrSugg), 300);
       return () => clearTimeout(t);
-    } else if (!cpAddrFocus) {
+    } else if (!addrFocus) {
       setCpAddrSugg([]);
     }
   }, [cpAddrQuery, cpAddrFocus, fetchCpAddrSuggest]);
@@ -989,17 +1576,37 @@ export default function AccountPage() {
               >
                 Контрагенты
               </button>
+              <button
+                onClick={() => setActiveTab('profile')}
+                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'profile'
+                    ? 'border-amber-500 text-amber-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Профиль
+              </button>
             </nav>
           </div>
 
           {/* Контент вкладок */}
           <div>
             {activeTab === 'requests' && <RequestsList />}
+            {activeTab === 'profile' && <ProfileSettings addNotification={addNotification} />}
 
             {activeTab === 'suppliers' && (
               <div>
-                <div className="flex justify-end mb-4">
-                  <button onClick={() => setShowSupplierCreateModal(true)} className="px-4 py-2 bg-emerald-600 text-white rounded-md whitespace-nowrap">
+                <div className="flex justify-between items-center mb-4">
+                    <div className="w-1/4">
+                        <input
+                          type="text"
+                          placeholder="Поиск по наименованию или ИНН..."
+                          value={supplierSearchTerm}
+                          onChange={(e) => setSupplierSearchTerm(e.target.value)}
+                          className={clsInput}
+                        />
+                    </div>
+                  <button onClick={() => { setShowSupplierCreateModal(true); setNewSupplierForm({ category: [] }); }} className="px-4 py-2 bg-emerald-600 text-white rounded-md whitespace-nowrap">
                     + Добавить поставщика
                   </button>
                 </div>
@@ -1010,29 +1617,31 @@ export default function AccountPage() {
                     <p className="text-gray-700">У вас пока нет добавленных поставщиков.</p>
                   </div>
                 )}
-                {!suppliersLoading && !suppliersError && suppliers.length > 0 && (
+                {!suppliersLoading && !suppliersError && suppliers.length > 0 && !filteredAndSortedSuppliers.length && (
+                   <div className="bg-white rounded-xl shadow p-6 text-center">
+                     <p className="text-gray-700">Поставщики не найдены.</p>
+                   </div>
+                )}
+                {!suppliersLoading && !suppliersError && filteredAndSortedSuppliers.length > 0 && (
                   <div className="bg-white rounded-xl shadow overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Наименование</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ИНН/КПП</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Юр. адрес</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Контактное лицо</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Телефон</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Почта</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSupplierSort('short_name')}>Наименование{getSupplierSortIndicator('short_name')}</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSupplierSort('inn')}>ИНН{getSupplierSortIndicator('inn')}</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Категории</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Действия</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200 text-sm ">
-                        {suppliers.map(s => (
+                        {filteredAndSortedSuppliers.map(s => (
                           <tr key={s.id}>
                             <td className="px-6 py-4 whitespace-nowrap font-medium">{s.short_name}</td>
-                            <td className="px-6 py-4 whitespace-nowrap">{s.inn}{s.kpp ? ` / ${s.kpp}` : ''}</td>
-                            <td className="px-6 py-4">{s.legal_address}</td>
-                            <td className="px-6 py-4 whitespace-nowrap">{s.contact_person || '—'}</td>
-                            <td className="px-6 py-4 whitespace-nowrap">{s.phone_number || '—'}</td>
-                            <td className="px-6 py-4 whitespace-nowrap">{s.email || '—'}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">{s.inn}</td>
+                            <td className="px-6 py-4">
+                              {(s.category || []).slice(0, 4).join(', ')}
+                              {(s.category || []).length > 4 && '...'}
+                            </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center gap-2">
                                 <button onClick={() => {
@@ -1048,10 +1657,10 @@ export default function AccountPage() {
                                     ogrn: s.ogrn,
                                     okpo: s.okpo,
                                     okato: s.okato,
-                                    contact_person: s.contact_person,
+                                    director: s.director,
                                     phone_number: formatPhoneForDisplay(s.phone_number),
                                     email: s.email,
-                                    category: s.category,
+                                    category: Array.isArray(s.category) ? s.category : [],
                                   });
                                 }} className="text-amber-600 hover:underline text-sm">Изменить</button>
                               </div>
@@ -1067,7 +1676,16 @@ export default function AccountPage() {
 
             {activeTab === 'counterparties' && (
               <div>
-                <div className="flex justify-end mb-4">
+                <div className="flex justify-between items-center mb-4">
+                    <div className="w-1/4">
+                        <input
+                          type="text"
+                          placeholder="Поиск по наименованию или ИНН..."
+                          value={counterpartySearchTerm}
+                          onChange={(e) => setCounterpartySearchTerm(e.target.value)}
+                          className={clsInput}
+                        />
+                    </div>
                   <button onClick={() => { setShowCpModal(true); setEditingCpId(null); setCpForm({}); }} className="px-4 py-2 bg-emerald-600 text-white rounded-md whitespace-nowrap">
                     + Добавить контрагента
                   </button>
@@ -1079,14 +1697,19 @@ export default function AccountPage() {
                     <p className="text-gray-700">У вас пока нет контрагентов.</p>
                   </div>
                 )}
-                {!cpsLoading && !cpsError && counterparties.length > 0 && (
+                {!cpsLoading && !cpsError && counterparties.length > 0 && !filteredAndSortedCounterparties.length && (
+                    <div className="bg-white rounded-xl shadow p-6 text-center">
+                        <p className="text-gray-700">Контрагенты не найдены.</p>
+                    </div>
+                )}
+                {!cpsLoading && !cpsError && filteredAndSortedCounterparties.length > 0 && (
                   <div className="bg-white rounded-xl shadow overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Наименование</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ИНН/КПП</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Юр. адрес</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleCounterpartySort('short_name')}>Наименование{getCounterpartySortIndicator('short_name')}</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleCounterpartySort('inn')}>ИНН/КПП{getCounterpartySortIndicator('inn')}</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleCounterpartySort('legal_address')}>Юр. адрес{getCounterpartySortIndicator('legal_address')}</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Контактное лицо</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Телефон</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Почта</th>
@@ -1094,12 +1717,12 @@ export default function AccountPage() {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200 text-sm ">
-                        {counterparties.map(cp => (
+                        {filteredAndSortedCounterparties.map(cp => (
                           <tr key={cp.id}>
                             <td className="px-6 py-4 whitespace-nowrap font-medium">{cp.short_name}</td>
                             <td className="px-6 py-4 whitespace-nowrap">{cp.inn}{cp.kpp ? ` / ${cp.kpp}` : ''}</td>
                             <td className="px-6 py-4">{cp.legal_address}</td>
-                            <td className="px-6 py-4 whitespace-nowrap">{cp.contact_person || '—'}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">{cp.director || '—'}</td>
                             <td className="px-6 py-4 whitespace-nowrap">{cp.phone || '—'}</td>
                             <td className="px-6 py-4 whitespace-nowrap">{cp.email || '—'}</td>
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -1210,14 +1833,30 @@ export default function AccountPage() {
                      <h4 className="text-md font-semibold text-gray-800 mb-2">Контактная информация</h4>
                   </div>
                   <div className="md:col-span-3">
-                    <label className="text-xs text-gray-600">Категория* <span className="text-xs text-gray-400">(в именительном падеже, напр.: металлопрокат, дерево, кроссовки)</span></label>
-                    <input className={supplierFormErrors.category ? clsInputError : clsInput} placeholder="Категория" value={newSupplierForm.category || ''} onChange={e => handleSupplierFormChange('category', e.target.value)} />
+                    <label className="text-xs text-gray-600">Категории* <span className="text-xs text-gray-400">(вводите через Enter или пробел)</span></label>
+                    <div className="flex flex-wrap gap-2 items-center p-2 border border-gray-300 rounded-md">
+                      {newSupplierForm.category?.map(cat => (
+                        <div key={cat} className="flex items-center gap-1 bg-amber-100 text-amber-800 text-sm font-medium px-2 py-1 rounded-full">
+                          {cat}
+                          <button type="button" onClick={() => removeCategory(cat)} className="text-amber-600 hover:text-amber-800">
+                            &times;
+                          </button>
+                        </div>
+                      ))}
+                      <input
+                        className="flex-grow bg-transparent focus:outline-none"
+                        placeholder="Добавить категорию..."
+                        value={categoryInput}
+                        onChange={e => setCategoryInput(e.target.value)}
+                        onKeyDown={handleCategoryInputKeyDown}
+                      />
+                    </div>
                     {supplierFormErrors.category && <p className="text-xs text-red-600 mt-1">{supplierFormErrors.category}</p>}
                   </div>
                   <div className="md:col-span-2">
                     <label className="text-xs text-gray-600">ФИО контактного лица</label>
-                    <input className={supplierFormErrors.contact_person ? clsInputError : clsInput} placeholder="Иванов Иван Иванович" value={newSupplierForm.contact_person || ''} onChange={e => handleSupplierFormChange('contact_person', e.target.value)} />
-                    {supplierFormErrors.contact_person && <p className="text-xs text-red-600 mt-1">{supplierFormErrors.contact_person}</p>}
+                    <input className={supplierFormErrors.director ? clsInputError : clsInput} placeholder="Иванов Иван Иванович" value={newSupplierForm.director || ''} onChange={e => handleSupplierFormChange('director', e.target.value)} />
+                    {supplierFormErrors.director && <p className="text-xs text-red-600 mt-1">{supplierFormErrors.director}</p>}
                   </div>
                   <div>
                     <label className="text-xs text-gray-600">Номер телефона</label>
@@ -1363,8 +2002,8 @@ export default function AccountPage() {
                   <h4 className="md:col-span-3 text-md font-semibold text-gray-800">Контактная информация</h4>
                   <div>
                     <label className="text-xs text-gray-600">ФИО контактного лица*</label>
-                    <input className={cpFormErrors.contact_person ? clsInputError : clsInput} placeholder="Иванов И.И." value={cpForm.contact_person || ''} onChange={e => handleCpFormChange('contact_person', e.target.value)} />
-                    {cpFormErrors.contact_person && <p className="text-xs text-red-600 mt-1">{cpFormErrors.contact_person}</p>}
+                    <input className={cpFormErrors.director ? clsInputError : clsInput} placeholder="Иванов И.И." value={cpForm.director || ''} onChange={e => handleCpFormChange('director', e.target.value)} />
+                    {cpFormErrors.director && <p className="text-xs text-red-600 mt-1">{cpFormErrors.director}</p>}
                   </div>
                   <div>
                     <label className="text-xs text-gray-600">Телефон*</label>
@@ -1394,4 +2033,5 @@ export default function AccountPage() {
 
       <Footer />
     </div>
-  )};
+  );
+}

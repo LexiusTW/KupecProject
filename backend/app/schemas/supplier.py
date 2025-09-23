@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field, EmailStr
 
 class SupplierBase(BaseModel):
@@ -12,7 +12,7 @@ class SupplierBase(BaseModel):
     contact_person: str = Field(..., min_length=2, description="ФИО контактного лица")
     phone_number: str = Field(..., min_length=5, description="Телефон контактного лица")
     email: EmailStr = Field(..., description="Email контактного лица")
-    category: str = Field(..., min_length=2, description="Категория поставщика (именительный падеж)")
+    category: List[str] = Field(..., description="Категории поставщика (именительный падеж)")
 
 class SupplierCreate(SupplierBase):
     pass
@@ -29,7 +29,7 @@ class SupplierUpdate(BaseModel):
     contact_person: Optional[str] = Field(None, min_length=2, description="ФИО контактного лица")
     phone_number: Optional[str] = Field(None, min_length=5, description="Телефон контактного лица")
     email: Optional[EmailStr] = Field(None, description="Email контактного лица")
-    category: Optional[str] = Field(None, min_length=2, description="Категория поставщика (именительный падеж)")
+    category: Optional[List[str]] = Field(None, description="Категории поставщика (именительный падеж)")
 
 class SupplierOut(SupplierBase):
     id: int

@@ -47,9 +47,7 @@ export default function Header({ showNav = true }: { showNav?: boolean }) {
         {/* Навигация */}
         {showNav && !isAuthPage ? (
           <nav className="flex items-center space-x-8">
-            <Link href="/search" className="text-gray-700 hover:text-amber-600 transition-colors">
-              Поиск
-            </Link>
+            
 
             <Link href="/account" className="text-gray-700 hover:text-amber-600 transition-colors">
               Личный кабинет
