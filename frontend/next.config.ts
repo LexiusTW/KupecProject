@@ -2,10 +2,14 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   images: {
-    unoptimized: true,
-  },
-  experimental: {
-    allowedDevOrigins: ["kupec.cloudpub.ru"],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'kupecc.cloudpub.ru',
+        port: '',
+        pathname: '/images/**',
+      },
+    ],
   },
   typescript: {
     // ignoreBuildErrors: true,

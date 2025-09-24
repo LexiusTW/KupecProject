@@ -1,8 +1,13 @@
-from typing import Any, Dict, List, Union, Annotated, Literal
+import pathlib
+import os
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Union, Annotated, Literal
 from uuid import UUID
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
-from pydantic import BaseModel, EmailStr, Field
+import aiofiles
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status, BackgroundTasks, Query
+from pydantic import BaseModel, EmailStr, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
@@ -160,14 +165,12 @@ def _generate_email_html(
     meta_html += '</table>'
 
     default_header = """<p style=\"margin-bottom: 25px; color: #343a40; line-height: 1.7; font-size: 16px;\">Здравствуйте,</p>\n<p style=\"margin-bottom: 30px; color: #343a40; line-height: 1.7; font-size: 16px;\">Просим вас предоставить коммерческое предложение по следующим позициям. Для этого перейдите по ссылке выше.</p>"""
-    # Use user's custom footer if available, otherwise use a default
     if user.email_footer:
         default_footer = user.email_footer.replace('\n', '<br>')
     else:
         default_footer = f"""<p style=\"margin-top: 30px; color: #343a40; line-height: 1.7; font-size: 16px;\">С уважением,<br>{user.login or 'Покупатель'}</p>"""
 
     header_html = header_text.replace('\n', '<br>') if header_text is not None else default_header
-    # The footer from the frontend payload takes precedence
     footer_html = footer_text.replace('\n', '<br>') if footer_text is not None else default_footer
 
     counterparty_name = req.counterparty.short_name if req.counterparty else 'Запрос поставки'
@@ -370,12 +373,29 @@ async def create_request(
     await db.refresh(req, attribute_names=["items", "counterparty", "offers"])
     return req
 
+
+
+
+import os
+from datetime import datetime
+...
+async def save_upload_file(upload_file: UploadFile, destination: pathlib.Path):
+    try:
+        async with aiofiles.open(destination, 'wb') as out_file:
+            while content := await upload_file.read(1024):
+                await out_file.write(content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"There was an error uploading the file: {e}")
+
+
 @router.post("/requests/{request_id}/offers", status_code=status.HTTP_201_CREATED)
 async def create_offer(
     request_id: UUID,
-    payload: OfferCreate,
     db: AsyncSession = Depends(get_db),
     token: UUID = Query(...),
+    offer_data: str = Form(...),
+    invoice_file: UploadFile = File(...),
+    contract_file: Optional[UploadFile] = File(None),
 ):
     # 1. Валидация токена
     q = select(OfferToken).where(OfferToken.token == token)
@@ -396,22 +416,65 @@ async def create_offer(
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
 
-    # 3. Проверка, что поставщик еще не делал предложение по этой заявке
-    q_offer = select(Offer).where(Offer.request_id == request_id, Offer.supplier_id == offer_token.supplier_id)
-    existing_offer = (await db.execute(q_offer)).scalar_one_or_none()
-    if existing_offer:
-        raise HTTPException(status_code=400, detail="An offer has already been submitted by this supplier")
+    # 3. Парсинг данных из формы
+    try:
+        payload = OfferCreate.parse_raw(offer_data)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
 
-    # 4. Создание Offer и OfferItem
+    # 4. Подготовка директорий
+    invoices_dir = pathlib.Path(settings.INVOICES_DIR)
+    contracts_dir = pathlib.Path(settings.SUPPLIER_CONTRACTS_DIR)
+    os.makedirs(invoices_dir, exist_ok=True)
+    os.makedirs(contracts_dir, exist_ok=True)
+
+    # 5. Валидация и сохранение файлов
+    allowed_mime_types = [
+        "application/pdf", 
+        "application/msword", 
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ]
+    
+    invoice_path = None
+    contract_path = None
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Обработка счета
+    if not invoice_file or not invoice_file.filename:
+        raise HTTPException(status_code=422, detail="Invoice file is required")
+    
+    if invoice_file.content_type not in allowed_mime_types:
+        raise HTTPException(status_code=400, detail=f"Invalid file type for invoice: {invoice_file.content_type}. Only Word or PDF are allowed.")
+
+    file_ext = pathlib.Path(invoice_file.filename).suffix
+    invoice_filename = f"invoice_{req.display_id}_{timestamp}{file_ext}"
+    invoice_path = invoices_dir / invoice_filename
+    await save_upload_file(invoice_file, invoice_path)
+
+    # Обработка договора
+    if contract_file and contract_file.filename:
+        if contract_file.content_type not in allowed_mime_types:
+            raise HTTPException(status_code=400, detail=f"Invalid file type for contract: {contract_file.content_type}. Only Word or PDF are allowed.")
+        
+        file_ext = pathlib.Path(contract_file.filename).suffix
+        contract_filename = f"contract_supplier_{req.display_id}_{timestamp}{file_ext}"
+        contract_path = contracts_dir / contract_filename
+        await save_upload_file(contract_file, contract_path)
+
+    # 6. Создание Offer и OfferItem
     offer = Offer(
         request_id=request_id,
         supplier_id=offer_token.supplier_id,
         comment=payload.comment,
+        delivery_option=payload.delivery_option,
+        vat_option=payload.vat_option,
+        invoice_expires_at=payload.invoice_expires_at,
+        invoice_file_path=str(invoice_path),
+        contract_file_path=str(contract_path) if contract_path else None,
     )
     db.add(offer)
     await db.flush()
 
-    # Проверяем, что все ID позиций в payload существуют в исходной заявке
     req_item_ids = {item.id for item in req.items}
     for item_payload in payload.items:
         if item_payload.request_item_id not in req_item_ids:
@@ -423,10 +486,21 @@ async def create_offer(
             offer_id=offer.id,
             request_item_id=item_payload.request_item_id,
             price=item_payload.price,
+            total_price=item_payload.total_price,
+            is_analogue=item_payload.is_analogue,
+            # Analogue fields
+            quantity=item_payload.quantity,
+            unit=item_payload.unit,
+            name=item_payload.name,
+            description=item_payload.description,
+            category=item_payload.category,
+            size=item_payload.size,
+            stamp=item_payload.stamp,
+            state_standard=item_payload.state_standard,
         )
         db.add(offer_item)
 
-    # 5. Помечаем токен как использованный и обновляем статус заявки
+    # 7. Помечаем токен как использованный и обновляем статус заявки
     offer_token.is_used = True
     req.status = "pending"
     await db.commit()
@@ -572,55 +646,48 @@ async def send_request_to_suppliers(
     total_emails_sent = 0
 
     all_supplier_ids = {sid for group in payload.groups for sid in group.supplier_ids}
-    
+    suppliers_by_id = {}
     if all_supplier_ids:
-        tokens_to_create = [{"request_id": req.id, "supplier_id": sid} for sid in all_supplier_ids]
-        stmt = pg_insert(OfferToken).values(tokens_to_create)
-        stmt = stmt.on_conflict_do_nothing(index_elements=['request_id', 'supplier_id'])
-        await db.execute(stmt)
-        await db.commit()
-
-        q_tokens = select(OfferToken).where(
-            OfferToken.request_id == req.id,
-            OfferToken.supplier_id.in_(all_supplier_ids)
-        )
-        tokens_by_supplier_id = {t.supplier_id: t.token for t in (await db.execute(q_tokens)).scalars().all()}
-        
         q_suppliers = select(Supplier).where(Supplier.id.in_(all_supplier_ids))
         suppliers_by_id = {s.id: s for s in (await db.execute(q_suppliers)).scalars().all()}
-    else:
-        tokens_by_supplier_id = {}
-        suppliers_by_id = {}
 
     for group in payload.groups:
+        if not group.supplier_ids:
+            continue
+
+        primary_supplier_id = group.supplier_ids[0]
+        if primary_supplier_id not in suppliers_by_id:
+            continue
+
         recipient_emails = set(group.manual_emails)
-        if not recipient_emails:
-            for sid in group.supplier_ids:
-                supplier = suppliers_by_id.get(sid)
-                if supplier and supplier.email:
-                    recipient_emails.add(supplier.email)
 
         if not recipient_emails:
             continue
-        token_for_link = None
-        if group.supplier_ids:
-            primary_supplier_id = group.supplier_ids[0]
-            token_for_link = tokens_by_supplier_id.get(primary_supplier_id)
-
+        
         unique_items = list({item.id: item for item in group.items}.values())
         if not unique_items:
             continue
-            
-        html_content = _generate_email_html(
-            unique_items, 
-            req, 
-            user, 
-            header_text=group.email_header, 
-            footer_text=group.email_footer, 
-            token=token_for_link
-        )
 
         for email in recipient_emails:
+            if not email:
+                continue
+
+            new_token = OfferToken(
+                request_id=req.id,
+                supplier_id=primary_supplier_id
+            )
+            db.add(new_token)
+            await db.flush()
+
+            html_content = _generate_email_html(
+                unique_items,
+                req,
+                user,
+                header_text=group.email_header,
+                footer_text=group.email_footer,
+                token=new_token.token
+            )
+
             send_email_background(
                 background_tasks=background_tasks,
                 recipient_email=email,
@@ -628,5 +695,7 @@ async def send_request_to_suppliers(
                 content=html_content,
             )
             total_emails_sent += 1
+    
+    await db.commit()
 
     return {"message": f"Request sending process started for {total_emails_sent} recipients."}

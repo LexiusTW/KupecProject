@@ -140,8 +140,6 @@ async def set_my_address_post(
     # сохраняем новый адрес пользователю из токена
     return await _set_address(payload, db, user)
 
-    return await _set_address(payload, db, user)
-
 
 @router.post("/users/me/change-password", status_code=status.HTTP_200_OK)
 async def change_password(

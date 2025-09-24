@@ -12,12 +12,12 @@ class Role(str, Enum):
 
 class BuyerUserCreate(BaseModel):
     login: str
-    password: constr(min_length=8)
+    password: constr(min_length=8) #type: ignore
     role: Role = Role.BUYER
 
 class SellerUserCreate(BaseModel):
     login: str
-    password: constr(min_length=8)
+    password: constr(min_length=8) #type: ignore
     role: Role = Role.SELLER
     inn: Optional[str] = None
     director_name: Optional[str] = None
@@ -32,8 +32,8 @@ from pydantic import ValidationError, field_validator
 
 class UserChangePassword(BaseModel):
     old_password: str
-    new_password: constr(min_length=8)
-    new_password_confirm: constr(min_length=8)
+    new_password: constr(min_length=8) #type: ignore
+    new_password_confirm: constr(min_length=8) #type: ignore
 
     @field_validator('new_password_confirm')
     @classmethod

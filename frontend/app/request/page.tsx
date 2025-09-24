@@ -1114,107 +1114,110 @@ ${emailFooter}`;
     if (!savedRequest) {
       return;
     }
-  
+
     // 2. Собираем данные для отправки
     const enabledCats = cats.filter(c => c.saved.length > 0 && sendCategoryEnabled[c.id]);
-  
+
     if (enabledCats.length === 0) {
-      addNotification({ type: 'warning', title: 'Никто не выбран', message: 'Выберите хотя бы одну категорию для отправки.' });
-      return;
+        addNotification({ type: 'warning', title: 'Никто не выбран', message: 'Выберите хотя бы одну категорию для отправки.' });
+        return;
     }
-  
-    // Группируем получателей и их данные
-    const recipientData = new Map<string, { items: Set<SavedItem>, header: string, footer: string, supplierIds: Set<number> }>();
 
-    emailPreviews.forEach(preview => {
-        recipientData.set(preview.recipients, {
-            items: new Set(preview.items),
-            header: preview.header,
-            footer: preview.footer,
-            supplierIds: new Set(),
-        });
-    });
+    // --- NEW SIMPLIFIED LOGIC ---
+    const allEmails = new Set<string>();
+    const allSupplierIds = new Set<number>();
+    const allItems = new Set<SavedItem>();
 
-    // Добавляем ID поставщиков
-    enabledCats.forEach(cat => {
-      const emailEntries = emailGroupsConfig[cat.id] || [];
-      emailEntries.forEach(entry => {
-        const email = entry.email.trim();
-        if (email && entry.supplierId && recipientData.has(email)) {
-          recipientData.get(email)!.supplierIds.add(entry.supplierId);
+    for (const cat of enabledCats) {
+        const emailEntries = emailGroupsConfig[cat.id] || [];
+        for (const entry of emailEntries) {
+            if (entry.email.trim()) {
+                allEmails.add(entry.email.trim());
+            }
+            if (entry.supplierId) {
+                allSupplierIds.add(entry.supplierId);
+            }
+            
+            const itemsForEntry = cat.saved.filter(item => entry.selectedItemIds.has(item.id));
+            itemsForEntry.forEach(item => allItems.add(item));
         }
-      });
-    });
-
-    const groupsPayload = Array.from(recipientData.entries()).map(([email, data]) => {
-        const items = Array.from(data.items);
-        const supplierIds = Array.from(data.supplierIds);
-        // Создаем уникальный ключ группы на основе email
-        const group_key = `group_${email}`;
-        // Собираем названия категорий для этой группы
-        const category_titles = [...new Set(items.map(i => i.kind === 'metal' ? (i as SavedMetalItem).category : (i as SavedGenericItem).category).filter(Boolean))] as string[];
-
-        return {
-            group_key,
-            category_titles,
-            supplier_ids: supplierIds,
-            manual_emails: [email],
-            items: items,
-            email_header: data.header,
-            email_footer: data.footer,
-        };
-    });
-  
-    if (groupsPayload.length === 0) {
-      addNotification({ type: 'warning', title: 'Нет получателей', message: 'Укажите e-mail для отправки хотя бы в одной категории.' });
-      return;
     }
-  
+
+    if (allEmails.size === 0) {
+        addNotification({ type: 'warning', title: 'Нет получателей', message: 'Укажите e-mail для отправки.' });
+        return;
+    }
+
+    const primarySupplierId = allSupplierIds.size > 0 ? Array.from(allSupplierIds)[0] : null;
+
+    if (!primarySupplierId) {
+        addNotification({ type: 'error', title: 'Не выбран основной поставщик', message: 'Для отправки на email без поставщика, необходимо выбрать хотя бы одного основного поставщика в заявке.' });
+        return;
+    }
+
+    const groupsPayload = [{
+        group_key: 'unified_group',
+        category_titles: [...new Set(Array.from(allItems).map(i => i.kind === 'metal' ? (i as SavedMetalItem).category : (i as SavedGenericItem).category).filter(Boolean))] as string[],
+        supplier_ids: [primarySupplierId],
+        manual_emails: Array.from(allEmails),
+        items: Array.from(allItems),
+        email_header: emailPreviews[0]?.header || '',
+        email_footer: emailPreviews[0]?.footer || '',
+    }];
+    
+    // --- END OF NEW LOGIC ---
+
     setIsSubmitting(true);
     try {
-      const sendRes = await fetch(`${API_BASE_URL}/api/v1/requests/${(savedRequest as any).id}/send-to-suppliers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ groups: groupsPayload }),
-      });
-  
-      if (!sendRes.ok) {
-        const errJson = await sendRes.json().catch(() => ({}));
-        throw new Error(errJson.detail || 'Не удалось разослать заявку поставщикам');
-      }
-  
-      const result = await sendRes.json();
-      addNotification({ type: 'success', title: 'Заявка отправлена', message: result.message || 'Заявка успешно разослана выбранным поставщикам.' });
+        const sendRes = await fetch(`${API_BASE_URL}/api/v1/requests/${(savedRequest as any).id}/send-to-suppliers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ groups: groupsPayload }),
+        });
 
-      setCats([]);
-      setTitle('');
-      setDeliveryAt('');
-      setSelectedCp(null);
-      setCpSearchQuery('');
-      setEmailGroupsConfig({});
-      setSendCategoryEnabled({});
-      setShowSendModal(false);
+        if (!sendRes.ok) {
+            const errJson = await sendRes.json().catch(() => ({}));
+            throw new Error(errJson.detail || 'Не удалось разослать заявку поставщикам');
+        }
+
+        const result = await sendRes.json();
+        addNotification({ type: 'success', title: 'Заявка отправлена', message: result.message || 'Заявка успешно разослана выбранным поставщикам.' });
+
+        setCats([]);
+        setTitle('');
+        setDeliveryAt('');
+        setSelectedCp(null);
+        setCpSearchQuery('');
+        setEmailGroupsConfig({});
+        setSendCategoryEnabled({});
+        setShowSendModal(false);
     } catch (e: any) {
-      addNotification({ type: 'error', title: 'Ошибка отправки', message: e.message || String(e) });
+        addNotification({ type: 'error', title: 'Ошибка отправки', message: e.message || String(e) });
     } finally {
-      setIsSubmitting(false);
+        setIsSubmitting(false);
     }
-  };
+};
 
   const addEmailEntry = (catId: string) => {
-    setEmailGroupsConfig(prev => ({
-      ...prev,
-      [catId]: [
-        ...(prev[catId] || []),
-        {
-          id: crypto.randomUUID(),
-          email: '',
-          supplierId: null,
-          selectedItemIds: new Set(cats.find(c => c.id === catId)?.saved.map(item => item.id) || []),
-        }
-      ]
-    }));
+    setEmailGroupsConfig(prev => {
+      const currentEntries = prev[catId] || [];
+      const primaryEntry = currentEntries.length > 0 ? currentEntries[0] : null;
+      const inheritedSupplierId = primaryEntry ? primaryEntry.supplierId : null;
+
+      return {
+        ...prev,
+        [catId]: [
+          ...currentEntries,
+          {
+            id: crypto.randomUUID(),
+            email: '',
+            supplierId: inheritedSupplierId,
+            selectedItemIds: new Set(cats.find(c => c.id === catId)?.saved.map(item => item.id) || []),
+          }
+        ]
+      };
+    });
   };
 
   const removeEmailEntry = (catId: string, entryId: string) => {
@@ -1601,9 +1604,7 @@ ${emailFooter}`;
                                     className={clsInput}
                                     placeholder="contact@company.ru"
                                     value={entry.email}
-                                    readOnly={index === 0 && entry.supplierId !== null}
                                     onChange={(e) => {
-                                      if (index === 0 && entry.supplierId !== null) return;
                                       updateEmailEntry(cat.id, entry.id, 'email', e.target.value);
                                     }}
                                     disabled={!enabled}

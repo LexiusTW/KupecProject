@@ -1,5 +1,3 @@
-// ✅ ОБНОВЛЁННЫЙ ФАЙЛ layout.tsx — переименован в "PromTrade"
-
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Pacifico } from "next/font/google";
 import "./globals.css";
@@ -23,7 +21,9 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Купец",
-  description: "Поиск металлоконструкций по параметрам",
+  icons: {
+    icon: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -68,6 +68,13 @@ class Offer(Base):
     comment = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    # Новые поля для всего предложения
+    delivery_option = Column(String, nullable=False)
+    vat_option = Column(String, nullable=False)
+    invoice_file_path = Column(String, nullable=False)
+    invoice_expires_at = Column(Date, nullable=False)
+    contract_file_path = Column(String, nullable=True)
+
     request = relationship("Request", back_populates="offers", foreign_keys=[request_id])
     supplier = relationship("Supplier")
     items = relationship("OfferItem", back_populates="offer", cascade="all, delete-orphan")
@@ -77,7 +84,22 @@ class OfferItem(Base):
     id = Column(Integer, primary_key=True, index=True)
     offer_id = Column(Integer, ForeignKey("offers.id"), nullable=False)
     request_item_id = Column(Integer, ForeignKey("request_items.id"), nullable=False)
-    price = Column(Float, nullable=False)
+    price = Column(Float, nullable=False) # цена за единицу
+    total_price = Column(Float, nullable=True)
+    is_analogue = Column(Boolean, default=False, nullable=False)
+
+    quantity = Column(Float, nullable=True)
+    unit = Column(String, nullable=True)
+
+    # generic
+    name = Column(String, nullable=True)
+    description = Column(String, nullable=True) # Размеры, характеристики
+
+    # металлопрокат
+    category = Column(String, nullable=True)
+    size = Column(String, nullable=True)
+    stamp = Column(String, nullable=True) # Марка
+    state_standard = Column(String, nullable=True)  # ГОСТ
 
     offer = relationship("Offer", back_populates="items")
     request_item = relationship("RequestItem")

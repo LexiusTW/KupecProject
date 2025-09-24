@@ -1,12 +1,11 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from jose import jwt
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session as SyncSession
-
+from datetime import datetime, timezone
 from app.api import deps
 from app.core.config import settings
 from app.core.security import create_access_token, create_refresh_token
@@ -213,3 +212,63 @@ async def logout(response: Response):
     _delete_cookie(response, key="access_token")
     _delete_cookie(response, key="refresh_token")
     return {"message": "ok"}
+
+
+@router.get("/auth/verify")
+async def verify_access_token(
+    request: Request,
+    db: AsyncSession = Depends(deps.get_db),
+):
+    """Проверка валидности access-токена из HttpOnly cookie"""
+    access_token = request.cookies.get("access_token")
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Нет access токена",
+        )
+
+    try:
+        # Декодируем токен
+        payload = jwt.decode(
+            access_token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+        )
+
+        # Проверка структуры
+        sub = payload.get("sub")
+        role = payload.get("role")
+        if not sub or role not in ("buyer", "seller"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Неверная структура токена",
+            )
+
+        # Проверим пользователя в базе
+        user_id = int(sub)
+        existence = {"user": None}
+
+        def _sync_get(sdb: SyncSession):
+            existence["user"] = crud_get_by_id_with_role(
+                sdb, role=role, user_id=user_id
+            )
+
+        await db.run_sync(_sync_get)
+        if not existence["user"]:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Пользователь не найден",
+            )
+
+        return {"valid": True, "user_id": user_id, "role": role}
+
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Access токен истёк",
+        )
+    except jwt.JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Невалидный access токен",
+        )

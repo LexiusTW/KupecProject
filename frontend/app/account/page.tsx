@@ -6,6 +6,7 @@ import Footer from '../components/Footer';
 import Link from 'next/link';
 import SkeletonLoader from '../components/SkeletonLoader';
 import Notification, { NotificationProps } from '../components/Notification';
+import ConfirmationModal from '../components/ConfirmationModal';
 
 const API_BASE_URL = 'https://kupecbek.cloudpub.ru';
 const clsInput = 'w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-amber-500 focus:border-amber-500';
@@ -69,7 +70,7 @@ type Supplier = {
   kpp?: string;
   okpo?: string;
   okato?: string;
-  director: string; // ФИО контактного лица
+  contact_person: string; // ФИО контактного лица
   phone_number: string;   // Телефон
   email: string;          // Почта
   category: string[];       // Категории поставщика (массив строк)
@@ -80,7 +81,7 @@ type Counterparty = {
   short_name: string;
   legal_address: string;
   inn: string;
-  kpp?: string;
+kpp?: string;
   ogrn?: string;
   okpo?: string;
   okato?: string;
@@ -144,7 +145,7 @@ const RequestsList = () => {
         });
         if (!response.ok) {
           const er = await response.json().catch(() => ({}));
-          throw new Error(er.detail || 'Не удалось загрузить заявки');
+          throw new Error('Не удалось загрузить заявки');
         }
         const data = (await response.json()) as RequestRow[];
         setRequests(Array.isArray(data) ? data : []);
@@ -1049,7 +1050,7 @@ export default function AccountPage() {
     }
 
     // Контактная информация обязательна
-    if (!newSupplierForm.director || newSupplierForm.director.trim().length < 2) errors.director = 'Обязательное поле';
+    if (!newSupplierForm.contact_person || newSupplierForm.contact_person.trim().length < 2) errors.contact_person = 'Обязательное поле';
     if (!newSupplierForm.phone_number || newSupplierForm.phone_number.replace(/\D/g, '').length < 11) errors.phone_number = 'Некорректный номер телефона';
     if (!newSupplierForm.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newSupplierForm.email)) errors.email = 'Некорректный email';
     if (!newSupplierForm.category || newSupplierForm.category.length === 0) {
@@ -1175,6 +1176,43 @@ export default function AccountPage() {
       addNotification({ type: 'error', title: 'Ошибка', message: e.message });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [supplierToDelete, setSupplierToDelete] = useState<number | null>(null);
+
+  const openDeleteModal = (supplierId: number) => {
+    setSupplierToDelete(supplierId);
+    setIsDeleteModalOpen(true);
+  };
+
+  const closeDeleteModal = () => {
+    setSupplierToDelete(null);
+    setIsDeleteModalOpen(false);
+  };
+
+  const handleDeleteSupplier = async () => {
+    if (supplierToDelete === null) return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/suppliers/my/${supplierToDelete}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({ detail: 'Не удалось удалить поставщика' }));
+        throw new Error(errBody.detail);
+      }
+
+      setSuppliers(prev => prev.filter(s => s.id !== supplierToDelete));
+      addNotification({ type: 'success', title: 'Поставщик удален' });
+
+    } catch (e: any) {
+      addNotification({ type: 'error', title: 'Ошибка удаления', message: e.message });
+    } finally {
+      closeDeleteModal();
     }
   };
 
@@ -1643,7 +1681,7 @@ export default function AccountPage() {
                               {(s.category || []).length > 4 && '...'}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-4">
                                 <button onClick={() => {
                                   // Открыть модал в режиме редактирования
                                   setEditingSupplierId(s.id);
@@ -1657,12 +1695,13 @@ export default function AccountPage() {
                                     ogrn: s.ogrn,
                                     okpo: s.okpo,
                                     okato: s.okato,
-                                    director: s.director,
+                                    contact_person: s.contact_person,
                                     phone_number: formatPhoneForDisplay(s.phone_number),
                                     email: s.email,
                                     category: Array.isArray(s.category) ? s.category : [],
                                   });
                                 }} className="text-amber-600 hover:underline text-sm">Изменить</button>
+                                <button onClick={() => openDeleteModal(s.id)} className="text-red-600 hover:underline text-sm">Удалить</button>
                               </div>
                             </td>
                           </tr>
@@ -1743,6 +1782,14 @@ export default function AccountPage() {
               </div>
             )}
           </div>
+
+          <ConfirmationModal
+            isOpen={isDeleteModalOpen}
+            onClose={closeDeleteModal}
+            onConfirm={handleDeleteSupplier}
+            title="Подтвердите удаление"
+            message="Вы уверены, что хотите удалить этого поставщика? Это действие необратимо."
+          />
 
           {/* Модальное окно создания поставщика */}
           {showSupplierCreateModal && (
@@ -1855,8 +1902,8 @@ export default function AccountPage() {
                   </div>
                   <div className="md:col-span-2">
                     <label className="text-xs text-gray-600">ФИО контактного лица</label>
-                    <input className={supplierFormErrors.director ? clsInputError : clsInput} placeholder="Иванов Иван Иванович" value={newSupplierForm.director || ''} onChange={e => handleSupplierFormChange('director', e.target.value)} />
-                    {supplierFormErrors.director && <p className="text-xs text-red-600 mt-1">{supplierFormErrors.director}</p>}
+                    <input className={supplierFormErrors.contact_person ? clsInputError : clsInput} placeholder="Иванов Иван Иванович" value={newSupplierForm.contact_person || ''} onChange={e => handleSupplierFormChange('contact_person', e.target.value)} />
+                    {supplierFormErrors.contact_person && <p className="text-xs text-red-600 mt-1">{supplierFormErrors.contact_person}</p>}
                   </div>
                   <div>
                     <label className="text-xs text-gray-600">Номер телефона</label>

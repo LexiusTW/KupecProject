@@ -12,7 +12,7 @@ class RequestItemBase(BaseModel):
     quantity: Optional[float] = Field(default=None, ge=0)
     comment: Optional[str] = None
 
-    # НОВОЕ: универсальные «строковые» поля
+    # универсальные «строковые» поля
     size: Optional[str] = None   # для metal (строковой размер на витрину)
     dims: Optional[str] = None   # для generic (свободные характеристики)
     unit: Optional[str] = None    # для generic (ед. изм.)
@@ -58,11 +58,29 @@ class CounterpartyInRequest(BaseModel):
 class OfferItemCreate(BaseModel):
     request_item_id: int
     price: float
+    total_price: Optional[float] = None
+    is_analogue: bool = False
+
+    quantity: Optional[float] = None
+    unit: Optional[str] = None
+
+    # generic
+    name: Optional[str] = None
+    description: Optional[str] = None # Размеры, характеристики
+
+    # металлопрокат
+    category: Optional[str] = None
+    size: Optional[str] = None
+    stamp: Optional[str] = None # Марка
+    state_standard: Optional[str] = None  # ГОСТ
 
 class OfferCreate(BaseModel):
     supplier_id: Optional[int] = None
     comment: Optional[str] = None
     items: List[OfferItemCreate]
+    delivery_option: str
+    vat_option: str
+    invoice_expires_at: date
 
 class SupplierOut(BaseModel):
     id: int
@@ -73,7 +91,24 @@ class OfferItemOut(BaseModel):
     id: int
     request_item_id: int
     price: float
+    total_price: Optional[float] = None
+    is_analogue: bool
+
+    quantity: Optional[float] = None
+    unit: Optional[str] = None
+
+    # generic
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+    # металлопрокат
+    category: Optional[str] = None
+    size: Optional[str] = None
+    stamp: Optional[str] = None
+    state_standard: Optional[str] = None
+
     model_config = {"from_attributes": True}
+
 
 class OfferOut(BaseModel):
     id: int
@@ -81,6 +116,11 @@ class OfferOut(BaseModel):
     comment: Optional[str] = None
     created_at: datetime
     items: List[OfferItemOut]
+    delivery_option: str
+    vat_option: str
+    invoice_expires_at: date
+    invoice_file_path: str
+    contract_file_path: Optional[str] = None
     model_config = {"from_attributes": True}
 
 class RequestOut(BaseModel):

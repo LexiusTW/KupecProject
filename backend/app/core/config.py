@@ -46,4 +46,9 @@ class Settings:
     SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD")
     SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME")
 
+    # Директории для загрузок
+    INVOICES_DIR: str = "invoices"
+    SUPPLIER_CONTRACTS_DIR: str = "contracts"
+
+
 settings = Settings()

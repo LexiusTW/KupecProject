@@ -1,49 +1,61 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-export function middleware(request: NextRequest) {
-  const url = request.nextUrl.clone();
-  const accessToken = request.cookies.get('access_token');
+const API_URL = "https://kupecbek.cloudpub.ru";
 
-  const protectedRoutes = ['/request', '/account', '/deals', '/mail']; // Add all protected routes here
-  const authRoutes = ['/login', '/register'];
+export async function middleware(req: NextRequest) {
+  const path = req.nextUrl.pathname;
 
-  // Redirect root to /request if authenticated, otherwise to /login
-  if (url.pathname === '/') {
-    if (accessToken) {
-      url.pathname = '/request';
-      return NextResponse.redirect(url);
-    } else {
-      url.pathname = '/login';
-      return NextResponse.redirect(url);
+  // Разрешаем всегда ходить на статику и иконки
+  if (path.startsWith("/_next") || path.startsWith("/favicon.ico")) {
+    return NextResponse.next();
+  }
+
+  // Проверяем access токен через бэкенд
+  let isValid = false;
+  try {
+    const res = await fetch(`${API_URL}/api/v1/auth/verify`, {
+      method: "GET",
+      headers: {
+        cookie: req.headers.get("cookie") || "",
+      },
+      credentials: "include",
+    });
+
+    if (res.ok) {
+      isValid = true;
     }
+  } catch (e) {
+    console.error("Ошибка проверки токена:", e);
   }
 
-  // If no access token and trying to access a protected route, redirect to login
-  if (!accessToken && protectedRoutes.some(route => url.pathname.startsWith(route))) {
-    url.pathname = '/login';
-    // Optionally, add a 'next' query parameter to redirect back after login
-    url.searchParams.set('next', request.nextUrl.pathname);
-    return NextResponse.redirect(url);
+  // === 1. Корень ===
+  if (path === "/") {
+    return NextResponse.redirect(
+      new URL(isValid ? "/request" : "/login", req.url)
+    );
   }
 
-  // If access token exists and trying to access login or register page, redirect to /request
-  if (accessToken && authRoutes.includes(url.pathname)) {
-    url.pathname = '/request';
-    return NextResponse.redirect(url);
+  // === 2. Нет токена или он невалиден ===
+  if (!isValid) {
+    if (
+      path.startsWith("/login") ||
+      path.startsWith("/register") ||
+      /^\/request\/[^/]+$/.test(path)
+    ) {
+      return NextResponse.next();
+    }
+    return NextResponse.redirect(new URL("/login", req.url));
+  }
+
+  // === 3. Есть валидный токен ===
+  if (path.startsWith("/login") || path.startsWith("/register")) {
+    return NextResponse.redirect(new URL("/request", req.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    '/',
-    '/login',
-    '/register',
-    '/request/:path*',
-    '/account/:path*',
-    '/deals/:path*',
-    '/mail/:path*',
-  ],
+  matcher: ["/((?!_next/static|_next/image|images|favicon.ico).*)"],
 };

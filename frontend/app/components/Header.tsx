@@ -37,7 +37,7 @@ export default function Header({ showNav = true }: { showNav?: boolean }) {
         <div className="relative h-16 w-48 flex items-center">
           <Image
             src="/images/logo.png"
-            alt="PromTrade Logo"
+            alt="logo"
             fill
             className="object-contain"
             priority

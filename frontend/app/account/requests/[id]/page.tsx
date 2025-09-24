@@ -11,10 +11,8 @@ const API_BASE_URL = 'https://kupecbek.cloudpub.ru';
 
 // ─────────── TYPES ─────────── //
 
-// Simplified SavedItem to match RequestItem
-// We can reuse this for the modal logic
 type SavedItem = {
-    id: string; // We'll use the original item ID, converted to string
+    id: string;
     kind: 'metal' | 'generic';
     category?: string | null;
     name?: string | null;
@@ -51,7 +49,6 @@ type OfferItem = {
   price: number;
 };
 
-// Extended Supplier type for the resend modal
 type Supplier = {
   id: number;
   short_name: string;
@@ -62,7 +59,7 @@ type Supplier = {
 
 type Offer = {
   id: number;
-  supplier: { id: number; short_name: string; }; // Simplified supplier for offers
+  supplier: { id: number; short_name: string; };
   comment: string | null;
   created_at: string;
   items: OfferItem[];
@@ -86,7 +83,6 @@ type RequestDetails = {
   counterparty: Counterparty | null;
 };
 
-// Types for the resend modal, adapted from request/page.tsx
 type CategoryBlock = {
   id: string;
   title: string;
@@ -94,7 +90,8 @@ type CategoryBlock = {
   saved: SavedItem[];
 };
 
-type MetalEmailEntry = {
+// This type is now identical to the one in request/page.tsx
+type EmailEntry = {
   id: string;
   email: string;
   selectedItemIds: Set<string>;
@@ -127,7 +124,7 @@ const formatSavedItem = (item: SavedItem) => {
   return `${parts} - ${item.quantity} ${item.unit || 'шт.'}`;
 };
 
-const ItemSelectionDropdown = ({ items, selectedIds, onSelectionChange, catKind, disabled }: { items: SavedItem[], selectedIds: Set<string>, onSelectionChange: (ids: Set<string>) => void, catKind: 'metal' | 'generic', disabled?: boolean }) => {
+const ItemSelectionDropdown = ({ items, selectedIds, onSelectionChange, disabled }: { items: SavedItem[], selectedIds: Set<string>, onSelectionChange: (ids: Set<string>) => void, disabled?: boolean }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -162,7 +159,7 @@ const ItemSelectionDropdown = ({ items, selectedIds, onSelectionChange, catKind,
         <svg className="w-4 h-4 ml-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
       </button>
       {isOpen && (
-        <div className="absolute z-10 mt-1 w-96 max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow-lg">
+        <div className="absolute z-20 mt-1 w-96 max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow-lg">
           <div className="p-2 border-b sticky top-0 bg-white">
             <label className="flex items-center gap-2 text-sm p-1 rounded">
               <input
@@ -232,13 +229,16 @@ const PreviewItemsTable = ({ items }: { items: SavedItem[] }) => {
     );
   }
 
+  // For generic items, we now add the category column to match the user request
   if (isGenericOnly) {
     return (
-      <table className="w-full min-w-[500px] text-xs border-collapse">
+      <table className="w-full min-w-[600px] text-xs border-collapse">
         <thead className="bg-gray-100 sticky top-0">
           <tr>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Категория</th>
             <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Наименование</th>
             <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Размеры, характеристики</th>
+            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Аналоги</th>
             <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Ед. изм.</th>
             <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Количество</th>
             <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Комментарий</th>
@@ -247,8 +247,10 @@ const PreviewItemsTable = ({ items }: { items: SavedItem[] }) => {
         <tbody>
           {items.map(item => (
               <tr key={item.id} className="border-t border-gray-200">
+                <td className="p-2 align-top">{item.category || 'Прочее'}</td>
                 <td className="p-2 align-top">{item.name}</td>
                 <td className="p-2 align-top">{item.dims || '—'}</td>
+                <td className="p-2 align-top">{item.allow_analogs ? 'Да' : 'Нет'}</td>
                 <td className="p-2 align-top whitespace-nowrap">{item.unit || 'шт.'}</td>
                 <td className="p-2 align-top whitespace-nowrap">{item.quantity}</td>
                 <td className="p-2 align-top">{item.comment || '—'}</td>
@@ -266,6 +268,7 @@ const PreviewItemsTable = ({ items }: { items: SavedItem[] }) => {
           <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Категория</th>
           <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Наименование</th>
           <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Характеристики</th>
+          <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Аналоги</th>
           <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Кол-во</th>
           <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Комментарий</th>
         </tr>
@@ -278,6 +281,7 @@ const PreviewItemsTable = ({ items }: { items: SavedItem[] }) => {
                 <td className="p-2 align-top">Металлопрокат</td>
                 <td className="p-2 align-top">{item.category}</td>
                 <td className="p-2 align-top">{[item.size, item.stamp, item.state_standard].filter(Boolean).join(', ')}</td>
+                <td className="p-2 align-top">{item.allow_analogs ? 'Да' : 'Нет'}</td>
                 <td className="p-2 align-top whitespace-nowrap">{item.quantity} {item.unit || 'шт.'}</td>
                 <td className="p-2 align-top">{item.comment || '—'}</td>
               </tr>
@@ -285,9 +289,10 @@ const PreviewItemsTable = ({ items }: { items: SavedItem[] }) => {
           }
           return (
             <tr key={item.id} className="border-t border-gray-200">
-              <td className="p-2 align-top">{item.category}</td>
+              <td className="p-2 align-top">{item.category || 'Прочее'}</td>
               <td className="p-2 align-top">{item.name}</td>
               <td className="p-2 align-top">{item.dims || '—'}</td>
+              <td className="p-2 align-top">{item.allow_analogs ? 'Да' : 'Нет'}</td>
               <td className="p-2 align-top whitespace-nowrap">{item.quantity} {item.unit || 'шт.'}</td>
               <td className="p-2 align-top">{item.comment || '—'}</td>
             </tr>
@@ -334,15 +339,13 @@ export default function RequestDetailPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notifications, setNotifications] = useState<Omit<NotificationProps, 'onDismiss'>[]>([]);
 
-  // --- Resend Modal State ---
+  // --- Resend Modal State (now identical to request/page.tsx) ---
   const [showSendModal, setShowSendModal] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [emailFooter, setEmailFooter] = useState('');
   const [emailPreviews, setEmailPreviews] = useState<EmailPreview[]>([]);
-  const [sendCategoryManual, setSendCategoryManual] = useState<Record<string, string>>({});
   const [sendCategoryEnabled, setSendCategoryEnabled] = useState<Record<string, boolean>>({});
-  const [sendCategorySupplier, setSendCategorySupplier] = useState<Record<string, number | null>>({});
-  const [metalSendConfig, setMetalSendConfig] = useState<Record<string, MetalEmailEntry[]>>({});
-  const [sendCategoryOptions, setSendCategoryOptions] = useState<Record<string, Supplier[]>>({});
+  const [emailGroupsConfig, setEmailGroupsConfig] = useState<Record<string, EmailEntry[]>>({});
 
   const addNotification = (notif: Omit<NotificationProps, 'id' | 'onDismiss'>) => {
     const notifId = crypto.randomUUID();
@@ -381,20 +384,32 @@ export default function RequestDetailPage() {
     fetchRequestDetails();
   }, [id, router]);
 
-  // Fetch suppliers for the modal
+  // Fetch suppliers and user footer for the modal
   useEffect(() => {
-    async function fetchSuppliers() {
+    if (!showSendModal) return;
+    async function fetchModalData() {
       try {
-        const suppliersRes = await fetch(`${API_BASE_URL}/api/v1/suppliers/my`, { credentials: 'include' });
+        const [suppliersRes, footerRes] = await Promise.all([
+            fetch(`${API_BASE_URL}/api/v1/suppliers/my`, { credentials: 'include' }),
+            fetch(`${API_BASE_URL}/api/v1/users/me/footer`, { credentials: 'include' })
+        ]);
+
         if (suppliersRes.ok) {
-          setSuppliers(await suppliersRes.json());
+            setSuppliers(await suppliersRes.json());
+        }
+        if (footerRes.ok) {
+          const footerData = await footerRes.json();
+          setEmailFooter(footerData.email_footer || '');
+        } else {
+          setEmailFooter(`\nС уважением,\n${request?.counterparty?.short_name || 'Покупатель'}`);
         }
       } catch (error) {
-        console.error("Failed to load suppliers:", error);
+        console.error("Failed to load modal data:", error);
+        setEmailFooter(`\nС уважением,\n${request?.counterparty?.short_name || 'Покупатель'}`);
       }
     }
-    fetchSuppliers();
-  }, []);
+    fetchModalData();
+  }, [showSendModal, request?.counterparty?.short_name]);
 
   // --- Memoized category grouping ---
   const categoryBlocks = useMemo((): CategoryBlock[] => {
@@ -418,7 +433,7 @@ export default function RequestDetailPage() {
         id: title,
         title: title,
         kind: blockKind,
-        saved: items.map(item => ({ // Convert RequestItem to SavedItem
+        saved: items.map(item => ({
           id: String(item.id),
           kind: item.kind,
           category: item.category,
@@ -443,38 +458,26 @@ export default function RequestDetailPage() {
     }
 
     const recipientGroups: Record<string, SavedItem[]> = {};
-
     const enabledCats = categoryBlocks.filter(cat => sendCategoryEnabled[cat.id]);
 
     enabledCats.forEach(cat => {
-      if (cat.kind === 'metal') {
-        const metalEmails = metalSendConfig[cat.id] || [];
-        metalEmails.forEach(entry => {
-          const email = entry.email.trim();
-          if (email && entry.selectedItemIds.size > 0) {
-            if (!recipientGroups[email]) {
-              recipientGroups[email] = [];
-            }
-            const itemsToSend = cat.saved.filter(item => entry.selectedItemIds.has(item.id));
-            recipientGroups[email].push(...itemsToSend);
-          }
-        });
-      } else {
-        const email = (sendCategoryManual[cat.id] || '').trim();
-        if (email) {
+      const emailEntries = emailGroupsConfig[cat.id] || [];
+      emailEntries.forEach(entry => {
+        const email = entry.email.trim();
+        if (email && entry.selectedItemIds.size > 0) {
           if (!recipientGroups[email]) {
             recipientGroups[email] = [];
           }
-          recipientGroups[email].push(...cat.saved);
+          const itemsToSend = cat.saved.filter(item => entry.selectedItemIds.has(item.id));
+          recipientGroups[email].push(...itemsToSend);
         }
-      }
+      });
     });
 
     const previews = Object.entries(recipientGroups).map(([email, items]) => {
       const uniqueItems = Array.from(new Map(items.map(item => [item.id, item])).values());
-
       const header = `Здравствуйте,\n\nПросим предоставить коммерческое предложение по следующим позициям:`;
-      const footer = `\nС уважением,\n${request.counterparty?.short_name || 'Покупатель'}`;
+      const footer = emailFooter || `\nС уважением,\n${request.counterparty?.short_name || 'Покупатель'}`;
 
       return {
         recipients: email,
@@ -485,7 +488,7 @@ export default function RequestDetailPage() {
     });
 
     setEmailPreviews(previews);
-  }, [showSendModal, categoryBlocks, request, sendCategoryEnabled, sendCategorySupplier, sendCategoryManual, suppliers, sendCategoryOptions, metalSendConfig]);
+  }, [showSendModal, categoryBlocks, request, sendCategoryEnabled, emailGroupsConfig, emailFooter]);
 
 
   // --- Offer Logic ---
@@ -530,31 +533,25 @@ export default function RequestDetailPage() {
     }
   }
 
-  // --- Resend Modal Logic ---
+  // --- Resend Modal Logic (now identical to request/page.tsx) ---
   const handleOpenSendModal = () => {
     const initialEnabledState: Record<string, boolean> = {};
-    const initialMetalConfig: Record<string, MetalEmailEntry[]> = {};
-    const initialManualEmails: Record<string, string> = {};
+    const initialEmailGroups: Record<string, EmailEntry[]> = {};
 
     categoryBlocks.forEach(cat => {
       if (cat.saved.length > 0) {
         initialEnabledState[cat.id] = true;
-        if (cat.kind === 'metal') {
-          initialMetalConfig[cat.id] = [{
-            id: crypto.randomUUID(),
-            email: '',
-            supplierId: null,
-            selectedItemIds: new Set(cat.saved.map(item => item.id)),
-          }];
-        } else {
-          initialManualEmails[cat.id] = '';
-        }
+        initialEmailGroups[cat.id] = [{
+          id: crypto.randomUUID(),
+          email: '',
+          supplierId: null,
+          selectedItemIds: new Set(cat.saved.map(item => item.id)),
+        }];
       }
     });
 
     setSendCategoryEnabled(initialEnabledState);
-    setMetalSendConfig(initialMetalConfig);
-    setSendCategoryManual(initialManualEmails);
+    setEmailGroupsConfig(initialEmailGroups);
     setShowSendModal(true);
   };
 
@@ -562,111 +559,112 @@ export default function RequestDetailPage() {
     if (!request) return;
 
     const enabledCats = categoryBlocks.filter(c => c.saved.length > 0 && sendCategoryEnabled[c.id]);
-  
+
     if (enabledCats.length === 0) {
-      addNotification({ type: 'warning', title: 'Никто не выбран', message: 'Выберите хотя бы одну категорию для отправки.' });
-      return;
+        addNotification({ type: 'warning', title: 'Никто не выбран', message: 'Выберите хотя бы одну категорию для отправки.' });
+        return;
     }
-  
-    const recipientData = new Map<string, { items: Set<SavedItem>, header: string, footer: string, supplierIds: Set<number> }>();
 
-    emailPreviews.forEach(preview => {
-        recipientData.set(preview.recipients, {
-            items: new Set(preview.items),
-            header: preview.header,
-            footer: preview.footer,
-            supplierIds: new Set(),
-        });
-    });
+    // --- NEW SIMPLIFIED LOGIC ---
+    const allEmails = new Set<string>();
+    const allSupplierIds = new Set<number>();
+    const allItems = new Set<SavedItem>();
 
-    enabledCats.forEach(cat => {
-        if (cat.kind === 'metal') {
-            const metalEmails = metalSendConfig[cat.id] || [];
-            metalEmails.forEach(entry => {
-                const email = entry.email.trim();
-                if (email && entry.supplierId && recipientData.has(email)) {
-                    recipientData.get(email)!.supplierIds.add(entry.supplierId);
-                }
-            });
-        } else { // generic
-            const supplierId = sendCategorySupplier[cat.id];
-            const manualEmail = (sendCategoryManual[cat.id] || '').trim();
-            if (manualEmail && supplierId && recipientData.has(manualEmail)) {
-                recipientData.get(manualEmail)!.supplierIds.add(supplierId);
+    for (const cat of enabledCats) {
+        const emailEntries = emailGroupsConfig[cat.id] || [];
+        for (const entry of emailEntries) {
+            if (entry.email.trim()) {
+                allEmails.add(entry.email.trim());
             }
+            if (entry.supplierId) {
+                allSupplierIds.add(entry.supplierId);
+            }
+            
+            const itemsForEntry = cat.saved.filter(item => entry.selectedItemIds.has(item.id));
+            itemsForEntry.forEach(item => allItems.add(item));
         }
-    });
-
-    const groupsPayload = Array.from(recipientData.entries()).map(([email, data]) => {
-        const items = Array.from(data.items).map(item => ({ ...item, id: Number(item.id) })); // Convert id back to number for API
-        const supplierIds = Array.from(data.supplierIds);
-        const group_key = `group_${email}`;
-        const category_titles = [...new Set(items.map(i => i.kind === 'metal' ? i.category : i.category).filter(Boolean))] as string[];
-
-        return {
-            group_key,
-            category_titles,
-            supplier_ids: supplierIds,
-            manual_emails: [email],
-            items: items,
-            email_header: data.header,
-            email_footer: data.footer,
-        };
-    });
-  
-    if (groupsPayload.length === 0) {
-      addNotification({ type: 'warning', title: 'Нет получателей', message: 'Укажите e-mail для отправки хотя бы в одной категории.' });
-      return;
     }
-  
+
+    if (allEmails.size === 0) {
+        addNotification({ type: 'warning', title: 'Нет получателей', message: 'Укажите e-mail для отправки.' });
+        return;
+    }
+
+    const primarySupplierId = allSupplierIds.size > 0 ? Array.from(allSupplierIds)[0] : null;
+
+    if (!primarySupplierId) {
+        addNotification({ type: 'error', title: 'Не выбран основной поставщик', message: 'Для отправки на email без поставщика, необходимо выбрать хотя бы одного основного поставщика в заявке.' });
+        return;
+    }
+
+    const groupsPayload = [{
+        group_key: 'unified_group',
+        category_titles: [...new Set(Array.from(allItems).map(i => i.category).filter(Boolean))] as string[],
+        supplier_ids: [primarySupplierId],
+        manual_emails: Array.from(allEmails),
+        items: Array.from(allItems),
+        email_header: emailPreviews[0]?.header || '',
+        email_footer: emailPreviews[0]?.footer || '',
+    }];
+    
+    // --- END OF NEW LOGIC ---
+
     setIsSubmitting(true);
     try {
-      const sendRes = await fetch(`${API_BASE_URL}/api/v1/requests/${request.id}/send-to-suppliers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ groups: groupsPayload }),
-      });
-  
-      if (!sendRes.ok) {
-        const errJson = await sendRes.json().catch(() => ({}));
-        throw new Error(errJson.detail || 'Не удалось разослать заявку поставщикам');
-      }
-  
-      const result = await sendRes.json();
-      addNotification({ type: 'success', title: 'Заявка отправлена', message: result.message || 'Заявка успешно разослана выбранным поставщикам.' });
-      setShowSendModal(false);
+        const sendRes = await fetch(`${API_BASE_URL}/api/v1/requests/${request.id}/send-to-suppliers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ groups: groupsPayload }),
+        });
+
+        if (!sendRes.ok) {
+            const errJson = await sendRes.json().catch(() => ({}));
+            throw new Error(errJson.detail || 'Не удалось разослать заявку поставщикам');
+        }
+
+        const result = await sendRes.json();
+        addNotification({ type: 'success', title: 'Заявка отправлена', message: result.message || 'Заявка успешно разослана выбранным поставщикам.' });
+        setShowSendModal(false);
     } catch (e: any) {
-      addNotification({ type: 'error', title: 'Ошибка отправки', message: e.message || String(e) });
+        addNotification({ type: 'error', title: 'Ошибка отправки', message: e.message || String(e) });
     } finally {
-      setIsSubmitting(false);
+        setIsSubmitting(false);
     }
   };
 
-  const addMetalEmail = (catId: string) => {
-    setMetalSendConfig(prev => ({
-      ...prev,
-      [catId]: [
-        ...(prev[catId] || []),
-        {
-          id: crypto.randomUUID(),
-          email: '',
-          supplierId: null,
-          selectedItemIds: new Set(categoryBlocks.find(c => c.id === catId)?.saved.map(item => item.id) || []),
-        }
-      ]
-    }));
+  const addEmailEntry = (catId: string) => {
+    setEmailGroupsConfig(prev => {
+      const currentEntries = prev[catId] || [];
+      const primaryEntry = currentEntries.length > 0 ? currentEntries[0] : null;
+      
+      // Inherit supplierId from the first entry in the group
+      const inheritedSupplierId = primaryEntry ? primaryEntry.supplierId : null;
+
+      return {
+        ...prev,
+        [catId]: [
+          ...currentEntries,
+          {
+            id: crypto.randomUUID(),
+            email: '',
+            supplierId: inheritedSupplierId,
+            selectedItemIds: new Set(categoryBlocks.find(c => c.id === catId)?.saved.map(item => item.id) || []),
+          }
+        ]
+      };
+    });
   };
 
-  const removeMetalEmail = (catId: string, entryId: string) => {
-    setMetalSendConfig(prev => ({
+  const removeEmailEntry = (catId: string, entryId: string) => {
+    setEmailGroupsConfig(prev => ({
       ...prev,
       [catId]: (prev[catId] || []).filter(entry => entry.id !== entryId),
     }));
   };
 
-  const updateMetalEmailEntry = (catId: string, entryId: string, field: keyof MetalEmailEntry, value: any) => {
-    setMetalSendConfig(prev => ({
+  const updateEmailEntry = (catId: string, entryId: string, field: keyof EmailEntry, value: any) => {
+    setEmailGroupsConfig(prev => ({
       ...prev,
       [catId]: (prev[catId] || []).map(entry =>
         entry.id === entryId ? { ...entry, [field]: value } : entry
@@ -731,117 +729,94 @@ export default function RequestDetailPage() {
           ))}
         </div>
 
-      {/* ---- Resend Modal ---- */}
+      {/* ---- Resend Modal (now identical to request/page.tsx) ---- */}
       {showSendModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-xl shadow-xl p-6 space-y-4 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
                 <h3 className="text-xl font-semibold">Подтверждение рассылки</h3>
                 <p>Выберите, какие категории рассылать, и укажите поставщика для каждой категории.</p>
 
-                {/* Category list with checkboxes and supplier select */}
                 <div className="space-y-3">
                   {categoryBlocks.filter(c => c.saved.length > 0).map(cat => {
                     const enabled = !!sendCategoryEnabled[cat.id];
-                    const options = sendCategoryOptions[cat.id] ?? suppliers;
+                    const emailEntries = emailGroupsConfig[cat.id] || [];
+                    const options = suppliers;
 
-                    if (cat.kind === 'metal') {
-                      const emailEntries = metalSendConfig[cat.id] || [];
-                      return (
-                        <div key={cat.id} className="flex items-start gap-3 p-3 border rounded-md">
-                          <div className="pt-1">
-                            <input type="checkbox" checked={enabled} onChange={() => setSendCategoryEnabled(prev => ({ ...prev, [cat.id]: !enabled }))} />
-                          </div>
-                          <div className="flex-1 space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div className="font-medium">{cat.title}</div>
-                              <div className="text-sm text-gray-500">{cat.saved.length} позиций</div>
-                            </div>
-                            {emailEntries.map((entry, index) => (
-                              <div key={entry.id} className="p-3 bg-gray-50 rounded-md space-y-3">
-                                <div>
-                                  <label className="text-xs text-gray-600">Поставщик</label>
-                                  <select className={clsInput} value={entry.supplierId ?? ''} onChange={(e) => {
-                                      const supplierId = e.target.value ? Number(e.target.value) : null;
-                                      const supplier = options.find(s => s.id === supplierId);
-                                      updateMetalEmailEntry(cat.id, entry.id, 'supplierId', supplierId);
-                                      updateMetalEmailEntry(cat.id, entry.id, 'email', supplier?.email || '');
-                                    }} disabled={!enabled}>
-                                    <option value=''>Выбрать поставщика...</option>
-                                    {options.map(s => (
-                                      <option key={s.id} value={s.id}>{s.short_name}{s.inn ? ` (ИНН: ${s.inn})` : ''}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
-                                  <div>
-                                    <label className="text-xs text-gray-600">E-mail для отправки</label>
-                                    <input
-                                      className={clsInput}
-                                      placeholder="contact@company.ru"
-                                      value={entry.email}
-                                      onChange={(e) => updateMetalEmailEntry(cat.id, entry.id, 'email', e.target.value)}
-                                      disabled={!enabled}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-600">Позиции</label>
-                                    <ItemSelectionDropdown
-                                      items={cat.saved}
-                                      selectedIds={entry.selectedItemIds}
-                                      onSelectionChange={(ids) => updateMetalEmailEntry(cat.id, entry.id, 'selectedItemIds', ids)}
-                                      catKind={cat.kind}
-                                      disabled={!enabled}
-                                    />
-                                  </div>
-                                </div>
-                                {emailEntries.length > 1 && (
-                                  <div className="text-right">
-                                    <button type="button" onClick={() => removeMetalEmail(cat.id, entry.id)} className="text-red-500 text-sm hover:text-red-700" disabled={!enabled}>Удалить</button>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                            <button type="button" onClick={() => addMetalEmail(cat.id)} className="text-sm text-emerald-600 hover:text-emerald-700" disabled={!enabled}>+ Добавить еще email</button>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    const selectedSupplierId = sendCategorySupplier[cat.id] ?? null;
                     return (
                       <div key={cat.id} className="flex items-start gap-3 p-3 border rounded-md">
                         <div className="pt-1">
                           <input type="checkbox" checked={enabled} onChange={() => setSendCategoryEnabled(prev => ({ ...prev, [cat.id]: !enabled }))} />
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 space-y-3">
                           <div className="flex items-center justify-between">
                             <div className="font-medium">{cat.title}</div>
                             <div className="text-sm text-gray-500">{cat.saved.length} позиций</div>
                           </div>
-                          <div className="mt-2">
-                            <select className={clsInput} value={selectedSupplierId ?? ''} onChange={(e) => {
-                                const supplierId = e.target.value ? Number(e.target.value) : null;
-                                setSendCategorySupplier(prev => ({ ...prev, [cat.id]: supplierId }));
-                                const supplier = options.find(s => s.id === supplierId);
-                                setSendCategoryManual(prev => ({ ...prev, [cat.id]: supplier?.email || '' }));
-                              }} disabled={!enabled}>
-                              <option value=''>Выбрать поставщика...</option>
-                              {options.map(s => (
-                                <option key={s.id} value={s.id}>{s.short_name}{s.inn ? ` (ИНН: ${s.inn})` : ''}</option>
-                              ))}
-                            </select>
-                            <div className="mt-2">
-                                <label className="text-xs text-gray-600">E-mail для отправки</label>
-                                <input
-                                  className={clsInput}
-                                  placeholder="contact@company.ru"
-                                  value={sendCategoryManual[cat.id] ?? ''}
-                                  onChange={(e) => setSendCategoryManual(prev => ({ ...prev, [cat.id]: e.target.value }))}
-                                  disabled={!enabled}
-                                />
-                                <p className="text-xs text-gray-500 mt-1">Email поставщика подставляется автоматически, но вы можете его изменить.</p>
+                          {emailEntries.map((entry, index) => (
+                            <div key={entry.id} className={`p-3 rounded-md ${index > 0 ? 'mt-2' : ''} bg-gray-50`}>
+                              {index === 0 && (
+                                <div className="mb-3">
+                                  <label className="text-xs text-gray-600">Поставщик (необязательно)</label>
+                                  <select
+                                    className={clsInput}
+                                    value={entry.supplierId ?? ''}
+                                    onChange={(e) => {
+                                      const supplierId = e.target.value ? Number(e.target.value) : null;
+                                      const supplier = options.find(s => s.id === supplierId);
+                                      updateEmailEntry(cat.id, entry.id, 'supplierId', supplierId);
+                                      updateEmailEntry(cat.id, entry.id, 'email', supplier?.email || '');
+                                    }}
+                                    disabled={!enabled}
+                                  >
+                                    <option value="">Выбрать из списка моих поставщиков...</option>
+                                    {options.map(s => (
+                                      <option key={s.id} value={s.id}>{s.short_name}{s.inn ? ` (ИНН: ${s.inn})` : ''}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+
+                              <div className="flex flex-wrap items-end gap-3">
+                                <div className="flex-grow min-w-[250px]">
+                                  <label className="text-xs text-gray-600">
+                                    {index === 0 ? 'E-mail поставщика или вручную' : 'Дополнительный E-mail'}
+                                  </label>
+                                  <input
+                                    className={clsInput}
+                                    placeholder="contact@company.ru"
+                                    value={entry.email}
+                                    onChange={(e) => {
+                                      updateEmailEntry(cat.id, entry.id, 'email', e.target.value);
+                                    }}
+                                    disabled={!enabled}
+                                  />
+                                </div>
+                                <div className="flex-shrink-0 w-full sm:w-auto">
+                                  <label className="text-xs text-gray-600">Позиции</label>
+                                  <ItemSelectionDropdown
+                                    items={cat.saved}
+                                    selectedIds={entry.selectedItemIds}
+                                    onSelectionChange={(ids) => updateEmailEntry(cat.id, entry.id, 'selectedItemIds', ids)}
+                                    disabled={!enabled}
+                                  />
+                                </div>
+                                {emailEntries.length > 1 ? (
+                                   <button
+                                      type="button"
+                                      onClick={() => removeEmailEntry(cat.id, entry.id)}
+                                      className="px-3 py-2 text-red-600 hover:text-red-800 disabled:text-gray-400 self-end"
+                                      title="Удалить получателя"
+                                      disabled={!enabled}
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
+                                      </svg>
+                                    </button>
+                                ) : <div className="w-11"/> }
+                              </div>
                             </div>
-                          </div>
+                          ))}
+                          <button type="button" onClick={() => addEmailEntry(cat.id)} className="text-sm text-emerald-600 hover:text-emerald-700" disabled={!enabled}>+ Добавить еще email</button>
                         </div>
                       </div>
                     );
