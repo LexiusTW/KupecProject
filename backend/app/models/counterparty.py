@@ -9,7 +9,7 @@ class Counterparty(Base):
     id = Column(Integer, primary_key=True, index=True)
 
     # связь с покупателем
-    buyer_id = Column(Integer, ForeignKey("buyers.id", ondelete="CASCADE"), index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
 
     # Основное
     short_name = Column(String(255), nullable=False)        # Краткое наименование юр. лица
@@ -31,4 +31,4 @@ class Counterparty(Base):
     phone = Column(String(50), nullable=False)                # Телефон
     email = Column(String(255), nullable=False)               # Электронная почта
 
-    buyer = relationship("Buyer", backref="counterparties")
+    user = relationship("User", backref="counterparties")

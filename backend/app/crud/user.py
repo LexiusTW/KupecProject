@@ -1,73 +1,68 @@
 # app/crud/user.py
 from typing import Optional, Union
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from app.core.security import get_password_hash, verify_password
-from app.models.user import Buyer, Seller
-from app.schemas.user import UserProfileUpdate
+from app.models.user import User
+from app.schemas.user import UserProfileUpdate, UserCreate
 
-UserLike = Union[Buyer, Seller]
 
-def get_by_login(db: Session, *, login: str) -> Optional[UserLike]:
-    buyer = db.query(Buyer).filter(Buyer.login == login).first()
-    if buyer:
-        return buyer
-    seller = db.query(Seller).filter(Seller.login == login).first()
-    return seller
+def get_by_login(db: Session, *, login: str) -> Optional[User]:
+    return db.query(User).filter(User.login == login).first()
 
-def get_by_id_with_role(db: Session, *, role: str, user_id: int) -> Optional[UserLike]:
-    if role == "buyer":
-        return db.query(Buyer).get(user_id)
-    if role == "seller":
-        return db.query(Seller).get(user_id)
+
+def get_by_email(db: Session, *, email: str) -> Optional[User]:
+    return db.query(User).filter(User.email == email).first()
+
+
+def get_by_id_with_role(db: Session, *, role: str, user_id: int) -> Optional[User]:
+    user = db.query(User).get(user_id)
+    if not user:
+        return None
+
+    # Mapping from JWT role to database role
+    role_map = {
+        "директор": "Директор",
+        "роп": "РОП",
+        "менеджер": "Менеджер",
+        "снабженец": "Снабженец",
+    }
+
+    expected_role = role_map.get(role.lower())
+
+    if user.role == expected_role:
+        return user
+
     return None
 
-def create_buyer(db: Session, *, login: str, password: str) -> Buyer:
-    db_obj = Buyer(
-        login=login,
-        hashed_password=get_password_hash(password),
+
+def create_user(db: Session, *, obj_in: UserCreate) -> User:
+    db_obj = User(
+        login=obj_in.login,
+        email=obj_in.email,
+        hashed_password=get_password_hash(obj_in.password),
+        inn=obj_in.inn,
+        director_name=obj_in.director_name or '',
+        phone_number=obj_in.phone_number or '',
+        legal_address=obj_in.legal_address or '',
         is_active=True,
-        role="Покупатель",
+        role=obj_in.role,
+        ogrn=obj_in.ogrn,
+        kpp=obj_in.kpp,
+        okpo=obj_in.okpo,
+        okato_oktmo=obj_in.okato_oktmo
     )
     db.add(db_obj)
     db.commit()
     db.refresh(db_obj)
     return db_obj
 
-def create_seller(
-    db: Session, *,
-    login: str, password: str,
-    inn: str, director_name: str, phone_number: str, legal_address: str
-) -> Seller:
-    db_obj = Seller(
-        login=login,
-        hashed_password=get_password_hash(password),
-        inn=inn,
-        director_name=director_name,
-        phone_number=phone_number,
-        legal_address=legal_address,
-        is_active=True,
-        role="Продавец",
-    )
-    db.add(db_obj)
-    db.commit()
-    db.refresh(db_obj)
-    return db_obj
 
-def authenticate(db: Session, *, login: str, password: str) -> Optional[UserLike]:
-    user = get_by_login(db, login=login)
+def authenticate(db: Session, *, login: str, password: str) -> Optional[User]:
+    user = db.query(User).filter(or_(User.login == login, User.email == login)).first()
     if not user:
         return None
     if not verify_password(password, user.hashed_password):
         return None
     return user
-
-def update_buyer_profile(db: Session, *, db_obj: Buyer, obj_in: UserProfileUpdate) -> Buyer:
-    if obj_in.delivery_address is not None:
-        db_obj.delivery_address = obj_in.delivery_address
-    if obj_in.email_footer is not None:
-        db_obj.email_footer = obj_in.email_footer
-    db.add(db_obj)
-    db.commit()
-    db.refresh(db_obj)
-    return db_obj

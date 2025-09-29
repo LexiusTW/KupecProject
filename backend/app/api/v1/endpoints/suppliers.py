@@ -1,23 +1,10 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-
-from app.api.deps import get_db, get_current_user
-from app.models.user import Buyer
-from app.models.supplier import Supplier
-from app.schemas.supplier import SupplierCreate, SupplierOut, SupplierUpdate
-
-router = APIRouter()
-
-
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, cast, String
 
 from app.api.deps import get_db, get_current_user
-from app.models.user import Buyer
+from app.models.user import User
 from app.models.supplier import Supplier
 from app.schemas.supplier import SupplierCreate, SupplierOut, SupplierUpdate
 
@@ -28,15 +15,13 @@ router = APIRouter()
 async def list_suppliers_by_category(
     category: str,
     db: AsyncSession = Depends(get_db),
-    user: Buyer = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """
     Возвращает список поставщиков текущего покупателя, у которых в списке категорий есть совпадение.
     """
-    if not isinstance(user, Buyer):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Только покупатели могут запрашивать поставщиков")
 
-    q = select(Supplier).where(Supplier.buyer_id == user.id)
+    q = select(Supplier).where(Supplier.user_id == user.id)
     
     if category:
         # Поиск внутри JSON массива. Приводим к строке для регистронезависимого поиска.
@@ -50,15 +35,13 @@ async def list_suppliers_by_category(
 @router.get("/suppliers/my", response_model=List[SupplierOut])
 async def list_my_suppliers(
     db: AsyncSession = Depends(get_db),
-    user: Buyer = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """
     Возвращает список поставщиков, добавленных текущим пользователем (покупателем).
     """
-    if not isinstance(user, Buyer):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Только покупатели могут иметь поставщиков")
 
-    query = select(Supplier).where(Supplier.buyer_id == user.id).order_by(Supplier.short_name)
+    query = select(Supplier).where(Supplier.user_id == user.id).order_by(Supplier.short_name)
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -66,17 +49,15 @@ async def list_my_suppliers(
 async def create_supplier(
     payload: SupplierCreate,
     db: AsyncSession = Depends(get_db),
-    user: Buyer = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """
     Создает нового поставщика для текущего пользователя (покупателя).
     """
-    if not isinstance(user, Buyer):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Только покупатели могут создавать поставщиков")
 
     # Проверка на уникальность ИНН в рамках одного покупателя
     existing_supplier_query = select(Supplier).where(
-        Supplier.buyer_id == user.id,
+        Supplier.user_id == user.id,
         Supplier.inn == payload.inn
     )
     existing_supplier = (await db.execute(existing_supplier_query)).scalar_one_or_none()
@@ -84,7 +65,7 @@ async def create_supplier(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                             detail="Поставщик с таким ИНН уже существует у вас")
 
-    db_supplier = Supplier(**payload.model_dump(), buyer_id=user.id)
+    db_supplier = Supplier(**payload.model_dump(), user_id=user.id)
     db.add(db_supplier)
     await db.commit()
     await db.refresh(db_supplier)
@@ -95,15 +76,13 @@ async def update_supplier(
     supplier_id: int,
     payload: SupplierUpdate,
     db: AsyncSession = Depends(get_db),
-    user: Buyer = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """
     Обновляет информацию о поставщике.
     """
-    if not isinstance(user, Buyer):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Только покупатели могут обновлять поставщиков")
 
-    query = select(Supplier).where(Supplier.id == supplier_id, Supplier.buyer_id == user.id)
+    query = select(Supplier).where(Supplier.id == supplier_id, Supplier.user_id == user.id)
     result = await db.execute(query)
     db_supplier = result.scalar_one_or_none()
 
@@ -117,7 +96,7 @@ async def update_supplier(
     # Если обновляется ИНН, проверим уникальность в рамках этого покупателя
     if "inn" in update_data:
         existing_inn_q = select(Supplier).where(
-            Supplier.buyer_id == user.id,
+            Supplier.user_id == user.id,
             Supplier.inn == update_data["inn"],
             Supplier.id != supplier_id
         )
@@ -137,7 +116,7 @@ async def patch_supplier(
     supplier_id: int,
     payload: SupplierUpdate,
     db: AsyncSession = Depends(get_db),
-    user: Buyer = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """
     Частичное обновление поставщика. Поведение аналогично PUT, но позволяет отправлять только изменённые поля.
@@ -148,15 +127,13 @@ async def patch_supplier(
 async def delete_supplier(
     supplier_id: int,
     db: AsyncSession = Depends(get_db),
-    user: Buyer = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """
     Удаляет поставщика.
     """
-    if not isinstance(user, Buyer):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Только покупатели могут удалять поставщиков")
 
-    query = select(Supplier).where(Supplier.id == supplier_id, Supplier.buyer_id == user.id)
+    query = select(Supplier).where(Supplier.id == supplier_id, Supplier.user_id == user.id)
     result = await db.execute(query)
     db_supplier = result.scalar_one_or_none()
 

@@ -1,13 +1,13 @@
-from typing import List, Optional, Literal
+from typing import List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime, date
 from uuid import UUID
 
-Role = Literal["buyer", "seller"]
+from app.schemas.user import Role
 
 class RequestItemBase(BaseModel):
     # общий блок
-    kind: Optional[Literal["metal", "generic"]] = None
+    kind: Optional[str] = None
     category: Optional[str] = None
     quantity: Optional[float] = Field(default=None, ge=0)
     comment: Optional[str] = None

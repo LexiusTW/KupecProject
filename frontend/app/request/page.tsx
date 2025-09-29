@@ -1181,8 +1181,7 @@ ${emailFooter}`;
             throw new Error(errJson.detail || 'Не удалось разослать заявку поставщикам');
         }
 
-        const result = await sendRes.json();
-        addNotification({ type: 'success', title: 'Заявка отправлена', message: result.message || 'Заявка успешно разослана выбранным поставщикам.' });
+        addNotification({ type: 'success', title: 'Заявка отправлена', message:'Заявка успешно разослана выбранным поставщикам.' });
 
         setCats([]);
         setTitle('');

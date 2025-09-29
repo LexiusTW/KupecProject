@@ -8,10 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.schemas.token import TokenPayload
+from app.schemas.user import Role
 
 from sqlalchemy.orm import Session as SyncSession
 from app.crud.user import get_by_id_with_role as crud_get_by_id_with_role
-from app.models.user import Buyer, Seller
+from app.models.user import User
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -25,7 +26,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def get_current_user(
     request: Request,
     db: AsyncSession = Depends(get_db),
-) -> Union[Buyer, Seller]:
+) -> User:
     """
     Достаёт access_token из HttpOnly cookie, валидирует JWT и возвращает текущего пользователя.
     """
@@ -42,7 +43,7 @@ async def get_current_user(
 async def get_current_user_optional(
     request: Request,
     db: AsyncSession = Depends(get_db),
-) -> Optional[Union[Buyer, Seller]]:
+) -> Optional[User]:
     token: Optional[str] = request.cookies.get("access_token")
     if not token:
         return None
@@ -58,7 +59,7 @@ async def get_current_user_optional(
         token_data = TokenPayload(**payload)
         role = payload.get("role")
         user_id = int(token_data.sub) if token_data.sub is not None else None
-        if user_id is None or role not in ("buyer", "seller"):
+        if user_id is None or role not in [r.value.lower() for r in Role]:
             raise credentials_exception
     except (JWTError, ValidationError, ValueError):
         raise credentials_exception

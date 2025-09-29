@@ -15,7 +15,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.api.deps import get_db, get_current_user
 from app.core.config import settings
-from app.models.user import Buyer, Seller
+from app.models.user import User
 from app.models.request import Request, RequestItem, Offer, OfferItem
 from app.models.crm import Email
 from app.models.supplier import Supplier
@@ -64,7 +64,7 @@ class SendToSuppliersPayload(BaseModel):
 def _generate_email_html(
     items: List[Union[SavedMetalItem, SavedGenericItem]],
     req: Request,
-    user: Buyer,
+    user: User,
     header_text: str | None = None,
     footer_text: str | None = None,
     token: UUID | None = None,
@@ -275,12 +275,12 @@ async def list_my_requests(
     db: AsyncSession = Depends(get_db),
     user = Depends(get_current_user),
 ):
-    if isinstance(user, Seller):
+    if user.role == "Продавец":
         return []
     
     q = (
         select(Request)
-        .where(Request.buyer_id == user.id)
+        .where(Request.user_id == user.id)
         .options(
             selectinload(Request.items),
             selectinload(Request.offers).selectinload(Offer.items),
@@ -322,7 +322,7 @@ async def create_request(
     delivery_address = payload.delivery_address or getattr(user, "delivery_address", None)
 
     req = Request(
-        buyer_id=user.id,  # id берётся из токена через get_current_user
+        user_id=user.id,  # id берётся из токена через get_current_user
         delivery_address=delivery_address,
         comment=payload.comment,
         delivery_at=payload.delivery_at,
@@ -514,13 +514,10 @@ async def award_offer(
     offer_id: int,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    user: Buyer = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
 
-    if not isinstance(user, Buyer):
-        raise HTTPException(status_code=403, detail="Only buyers can award offers")
-
-    q_req = select(Request).where(Request.id == request_id, Request.buyer_id == user.id).options(
+    q_req = select(Request).where(Request.id == request_id, Request.user_id == user.id).options(
         selectinload(Request.offers).selectinload(Offer.supplier),
         joinedload(Request.winner_offer).joinedload(Offer.supplier),
         joinedload(Request.counterparty)
@@ -582,17 +579,15 @@ async def award_offer(
 async def archive_request_as_email(
     request_id: UUID,
     db: AsyncSession = Depends(get_db),
-    user: Buyer = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """
     "Рассылает" заявку. На данном этапе это означает создание Email-сообщения
     в "Отправленных" у пользователя.
     """
-    if not isinstance(user, Buyer):
-        raise HTTPException(status_code=403, detail="Only buyers can send requests")
 
     # 1. Находим заявку и проверяем, что она принадлежит пользователю
-    q = select(Request).where(Request.id == request_id, Request.buyer_id == user.id).options(selectinload(Request.items), joinedload(Request.counterparty))
+    q = select(Request).where(Request.id == request_id, Request.user_id == user.id).options(selectinload(Request.items), joinedload(Request.counterparty))
     req = (await db.execute(q)).scalar_one_or_none()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found or access denied")
@@ -613,8 +608,8 @@ async def archive_request_as_email(
 
     # 3. Создаем запись в таблице Email
     email = Email(
-        sender_buyer_id=user.id,
-        receiver_buyer_id=user.id,  # Указываем получателя, чтобы пройти CHECK constraint
+        sender_id=user.id,
+        receiver_id=user.id,
         subject=subject,
         content=content,
         excel_file_path=None
@@ -632,12 +627,10 @@ async def send_request_to_suppliers(
     payload: SendToSuppliersPayload,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    user: Buyer = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
-    if not isinstance(user, Buyer):
-        raise HTTPException(status_code=403, detail="Only buyers can send requests")
 
-    q = select(Request).where(Request.id == request_id, Request.buyer_id == user.id).options(joinedload(Request.counterparty))
+    q = select(Request).where(Request.id == request_id, Request.user_id == user.id).options(joinedload(Request.counterparty))
     req = (await db.execute(q)).scalar_one_or_none()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found or access denied")

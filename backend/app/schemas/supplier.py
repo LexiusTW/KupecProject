@@ -33,7 +33,7 @@ class SupplierUpdate(BaseModel):
 
 class SupplierOut(SupplierBase):
     id: int
-    buyer_id: int
+    user_id: int
 
     class Config:
         from_attributes = True

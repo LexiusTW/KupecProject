@@ -34,7 +34,6 @@ class ChatMessageOut(BaseModel):
 class EmailCreate(BaseModel):
     subject: str
     content: str
-    receiver_role: Role
     receiver_id: int
 
 class EmailOut(BaseModel):

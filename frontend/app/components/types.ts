@@ -17,12 +17,15 @@ export interface AuthFormData {
 export interface RegisterFormData {
   login: string;
   password: string;
+  email: string;
+  role: string;
 
   // --- поля только для продавца:
   phone_number?: string;   // номер телефона ответственного лица
   director_name?: string;  // ФИО директора
   legal_address?: string;  // юридический адрес
   inn?: string;            // ИНН
+  organization?: any;      // Полные данные организации от DaData
 }
 
 export interface Product {
@@ -58,4 +61,22 @@ export type RequestCreate = {
 
 export type BuyerProfile = {
   delivery_address?: string | null;
+};
+
+// Типы для подсказок DaData
+export type DaDataParty = {
+  value: string;
+  unrestricted_value: string;
+  inn: string;
+  kpp?: string;
+  ogrn?: string;
+  okpo?: string;
+  okato?: string;
+  short_name?: string;
+  legal_address?: string;
+};
+
+export type DaDataAddr = {
+  value: string;
+  unrestricted_value?: string;
 };

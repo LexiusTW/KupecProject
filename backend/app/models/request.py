@@ -11,7 +11,7 @@ class Request(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     display_id = Column(Integer, server_default=request_display_id_seq.next_value(), nullable=False, unique=True)
-    buyer_id = Column(Integer, ForeignKey("buyers.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     counterparty_id = Column(Integer, ForeignKey("counterparties.id"), nullable=True)
     delivery_address = Column(String, nullable=True)
     comment = Column(String, nullable=True)

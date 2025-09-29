@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { JSX, useEffect } from 'react';
 
 export type NotificationType = 'success' | 'error' | 'warning';
 

@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.crm import ChatParticipant
+from app.models.user import User
 
 Payload = Union[str, Dict[str, Any]]
 
@@ -48,14 +49,13 @@ class ConnectionManager:
 
     async def broadcast_to_chat(self, payload: Payload, chat_id: int, db: AsyncSession) -> None:
         rows = (await db.execute(
-            select(ChatParticipant.buyer_id, ChatParticipant.seller_id)
+            select(ChatParticipant.user_id)
             .where(ChatParticipant.chat_id == chat_id)
-        )).all()
-        for buyer_id, seller_id in rows:
-            if buyer_id:
-                await self.send_personal_message(payload, "buyer", buyer_id)
-            if seller_id:
-                await self.send_personal_message(payload, "seller", seller_id)
+        )).scalars().all()
+        for user_id in rows:
+            user = await db.get(User, user_id)
+            if user:
+                await self.send_personal_message(payload, user.role, user.id)
 
 # единый экземпляр
 manager = ConnectionManager()

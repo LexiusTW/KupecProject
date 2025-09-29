@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_db, get_current_user
-from app.models.user import Buyer, Seller
+from app.models.user import User
 from app.models.request import Request
 from app.excel_processor import ExcelProcessor
 from app.schemas.excel import ExcelGenerationResponse, ExcelReadResponse, FileListResponse
@@ -20,9 +20,9 @@ excel_processor = ExcelProcessor()
 async def generate_excel_for_request(
     request_id: int,
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
-    if isinstance(user, Seller):
+    if user.role == 'seller':
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Sellers cannot generate Excel files"
@@ -38,7 +38,7 @@ async def generate_excel_for_request(
             detail="Request not found"
         )
     
-    if request.buyer_id != user.id:
+    if request.user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only generate Excel for your own requests"

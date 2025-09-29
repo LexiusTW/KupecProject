@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import select
 
 from app.models.request import Request, RequestItem
-from app.models.user import Buyer
+from app.models.user import User as Buyer
 from app.models.counterparty import Counterparty
 
 

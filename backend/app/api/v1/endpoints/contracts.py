@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, get_current_user
-from app.models.user import Buyer, Seller
+from app.models.user import User
 from app.services.contracts import generate_contract_for_counterparty, ensure_contracts_dir
 import os
 import glob
@@ -14,10 +14,10 @@ router = APIRouter()
 async def check_contract_endpoint(
     counterparty_id: int,
     request: Request,
-    user=Depends(get_current_user),
+    user: User = Depends(get_current_user),
     
 ):
-    if isinstance(user, Seller):
+    if user.role == "seller":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sellers cannot check contracts")
 
     contracts_dir = os.path.join(os.getcwd(), "contracts")
@@ -43,11 +43,11 @@ async def generate_contract_endpoint(
     counterparty_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     ensure_contracts_dir()
 
-    if isinstance(user, Seller):
+    if user.role == "seller":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sellers cannot generate contracts")
 
     try:

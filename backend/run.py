@@ -120,7 +120,7 @@ def main():
     missing = REQUIRED_TABLES - existing
 
     # 2) Если чего-то не хватает — только тогда запускаем миграции
-    apply_migrations_if_needed(missing)
+    # apply_migrations_if_needed(missing)
 
     config = copy.deepcopy(LOGGING_CONFIG)
     config["formatters"]["default"]["fmt"] = "%(asctime)s %(levelname)s %(message)s"

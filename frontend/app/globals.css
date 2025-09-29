@@ -3,6 +3,10 @@
 @tailwind components;
 @tailwind utilities;
 
+body {
+  overflow-y: scroll;
+}
+
 /* Анимации для уведомлений */
 @keyframes slide-in {
   from {
@@ -18,4 +22,9 @@
 .animate-slide-in-out {
   animation: slide-in 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
   /* Анимацию исчезновения можно добавить через JS, изменяя класс, или использовать более сложные CSS-техники */
+}
+
+input[type="password"]::-ms-reveal,
+input[type="password"]::-webkit-password-reveal-button {
+  display: none;
 }

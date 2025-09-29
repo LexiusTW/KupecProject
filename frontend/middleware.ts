@@ -32,24 +32,24 @@ export async function middleware(req: NextRequest) {
   // === 1. Корень ===
   if (path === "/") {
     return NextResponse.redirect(
-      new URL(isValid ? "/request" : "/login", req.url)
+      new URL(isValid ? "/request" : "/auth", req.url)
     );
   }
 
   // === 2. Нет токена или он невалиден ===
   if (!isValid) {
     if (
-      path.startsWith("/login") ||
-      path.startsWith("/register") ||
+      path.startsWith("/auth") ||
+      path.startsWith("/auth") ||
       /^\/request\/[^/]+$/.test(path)
     ) {
       return NextResponse.next();
     }
-    return NextResponse.redirect(new URL("/login", req.url));
+    return NextResponse.redirect(new URL("/auth", req.url));
   }
 
   // === 3. Есть валидный токен ===
-  if (path.startsWith("/login") || path.startsWith("/register")) {
+  if (path.startsWith("/auth") || path.startsWith("/auth")) {
     return NextResponse.redirect(new URL("/request", req.url));
   }
 

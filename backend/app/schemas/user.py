@@ -1,28 +1,29 @@
 from enum import Enum
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from pydantic import BaseModel, ConfigDict, constr
 
 
 class Role(str, Enum):
-    ADMIN = "Администратор"
-    BUYER = "Покупатель"
-    SELLER = "Продавец"
+    DIRECTOR = "Директор"
+    HEAD_OF_SALES = "РОП"
+    MANAGER = "Менеджер"
+    SUPPLY_MANAGER = "Снабженец"
 
 
-class BuyerUserCreate(BaseModel):
+class UserCreate(BaseModel):
     login: str
-    password: constr(min_length=8) #type: ignore
-    role: Role = Role.BUYER
-
-class SellerUserCreate(BaseModel):
-    login: str
-    password: constr(min_length=8) #type: ignore
-    role: Role = Role.SELLER
+    password: constr(min_length=8)  # type: ignore
+    role: Role
+    email: str
     inn: Optional[str] = None
-    director_name: Optional[str] = None
     phone_number: Optional[str] = None
+    director_name: Optional[str] = None
     legal_address: Optional[str] = None
+    ogrn: Optional[str] = None
+    kpp: Optional[str] = None
+    okpo: Optional[str] = None
+    okato_oktmo: Optional[str] = None
 
 class UserProfileUpdate(BaseModel):
     delivery_address: Optional[str] = None
@@ -45,9 +46,18 @@ class UserChangePassword(BaseModel):
 class UserSchema(BaseModel):
     id: int
     login: str
+    email: str
     role: Role
     is_active: bool
     delivery_address: Optional[str] = None
     email_footer: Optional[str] = None
+    inn: Optional[str] = None
+    director_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    legal_address: Optional[str] = None
+    ogrn: Optional[str] = None
+    kpp: Optional[str] = None
+    okpo: Optional[str] = None
+    okato_oktmo: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
