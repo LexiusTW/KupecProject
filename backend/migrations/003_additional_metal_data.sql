@@ -171,3 +171,4 @@ WHERE NOT EXISTS (
     WHERE m.name = v.name AND COALESCE(m.state_standard,'') = COALESCE(v.state_standard,'')
       AND COALESCE(m.category,'') = COALESCE(v.category,'') AND COALESCE(m.stamp,'') = COALESCE(v.stamp,'')
 );
+
