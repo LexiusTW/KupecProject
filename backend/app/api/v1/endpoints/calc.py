@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from math import pi
 
@@ -8,7 +8,8 @@ router = APIRouter(prefix="/calc", tags=["calc"])
 
 class WeightRequest(BaseModel):
     shape: str = Field(..., description="sheet|round|square|pipe|rectPipe|angle")
-    material_density: float = Field(..., description="Плотность, кг/м^3")
+    material: str | None = Field(None, description="black|stainless|aluminum|copper|brass|bronze|titanium")
+    material_density: float | None = Field(None, description="Плотность, кг/м^3 (если задано — приоритет)\nПо material подставляется автоматически")
     length_m: float = Field(..., ge=0)
 
     thickness_mm: float | None = None
@@ -22,6 +23,7 @@ class WeightResponse(BaseModel):
     area_m2: float
     mass_per_meter_kg: float
     mass_total_kg: float
+    used_density: float
 
 
 def mm_to_m(v: float | None) -> float:
@@ -59,17 +61,57 @@ def area_rect_pipe(width_mm: float, height_mm: float, thickness_mm: float) -> fl
 
 
 def area_angle(width_mm: float, height_mm: float, thickness_mm: float) -> float:
-    # Аппроксимация без радиусов: t*(b + h - t)
     b = mm_to_m(width_mm)
     h = mm_to_m(height_mm)
     t = mm_to_m(thickness_mm)
     return max(t * (b + h - t), 0.0)
 
 
+MATERIALS = {
+    "black": 7850.0,
+    "stainless": 7900.0,
+    "aluminum": 2700.0,
+    "copper": 8960.0,
+    "brass": 8500.0,
+    "bronze": 8800.0,
+    "titanium": 4500.0,
+}
+
+SORTAMENTS = {
+    "square": {"title": "Квадрат", "shape": "square", "required_fields": ["width_mm"]},
+    "round": {"title": "Круг/пруток", "shape": "round", "required_fields": ["diameter_mm"]},
+    "strip": {"title": "Лента", "shape": "sheet", "required_fields": ["thickness_mm", "width_mm"]},
+    "sheet": {"title": "Лист/плита", "shape": "sheet", "required_fields": ["thickness_mm", "width_mm"]},
+    "elbow": {"title": "Отвод", "shape": None, "required_fields": []},
+    "pipe": {"title": "Труба круглая", "shape": "pipe", "required_fields": ["outer_d_mm", "thickness_mm"]},
+    "rectPipe": {"title": "Труба профильная", "shape": "rectPipe", "required_fields": ["width_mm", "height_mm", "thickness_mm"]},
+    "angle": {"title": "Уголок", "shape": "angle", "required_fields": ["width_mm", "height_mm", "thickness_mm"]},
+    "flange": {"title": "Фланец плоский", "shape": None, "required_fields": []},
+    "channel": {"title": "Швеллер", "shape": None, "required_fields": []},
+    "hex": {"title": "Шестигранник", "shape": "round", "required_fields": ["diameter_mm"]},
+}
+
+class CalcSchemaResponse(BaseModel):
+    materials: list[str]
+    sortament: dict
+    note: str | None = None
+
+@router.get("/schema", response_model=CalcSchemaResponse)
+def get_schema():
+    return CalcSchemaResponse(
+        materials=["black", "stainless", "aluminum", "copper", "brass", "bronze", "titanium"],
+        sortament=SORTAMENTS,
+        note=("Отвод, фланец, швеллер требуют точного сортамента; в текущей версии не рассчитываются."),
+    )
+
+
 @router.post("/weight", response_model=WeightResponse)
 def calc_weight(payload: WeightRequest):
     s = payload.shape
-    density = payload.material_density
+    if payload.material_density is not None:
+        density = payload.material_density
+    else:
+        density = MATERIALS.get((payload.material or "").lower(), MATERIALS["black"])
     L = payload.length_m
 
     area = 0.0
@@ -88,6 +130,6 @@ def calc_weight(payload: WeightRequest):
 
     mass_per_meter = area * density
     mass_total = mass_per_meter * L
-    return WeightResponse(area_m2=area, mass_per_meter_kg=mass_per_meter, mass_total_kg=mass_total)
+    return WeightResponse(area_m2=area, mass_per_meter_kg=mass_per_meter, mass_total_kg=mass_total, used_density=density)
 
 
