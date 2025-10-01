@@ -104,7 +104,7 @@ type RequestRow = {
   id: string;
   display_id: string;
   created_at: string;
-  status: 'new' | 'pending' | 'awarded' | 'closed';
+  status: 'Заявка создана' | 'Поиск поставщиков' | 'КП отправлено' | 'Оплачено' | 'В доставке' | 'Сделка закрыта';
   delivery_address: string;
   counterparty: {
     id: number;
@@ -299,12 +299,11 @@ const RequestsList = () => {
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [requestsError, setRequestsError] = useState<string | null>(null);
-  const [sort, setSort] = useState<{ key: keyof RequestRow | 'offerCount', order: 'asc' | 'desc' }>({ key: 'created_at', order: 'desc' });
+  const [sort, setSort] = useState<{ key: keyof RequestRow, order: 'asc' | 'desc' }>({ key: 'created_at', order: 'desc' });
   const [filters, setFilters] = useState({
     date: '',
     status: '',
     counterparty: '',
-    offerCount: '',
   });
 
   useEffect(() => {
@@ -335,7 +334,7 @@ const RequestsList = () => {
     setFilters(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSort = (key: keyof RequestRow | 'offerCount') => {
+  const handleSort = (key: keyof RequestRow) => {
     setSort(prev => ({
       key,
       order: prev.key === key && prev.order === 'asc' ? 'desc' : 'asc',
@@ -349,14 +348,18 @@ const RequestsList = () => {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'new':
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Новая</span>;
-      case 'pending':
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Ожидает</span>;
-      case 'awarded':
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">В работе</span>;
-      case 'closed':
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Закрыта</span>;
+      case 'Заявка создана':
+        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Заявка создана</span>;
+      case 'Поиск поставщиков':
+        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Поиск поставщиков</span>;
+      case 'КП отправлено':
+        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">КП отправлено</span>;
+      case 'Оплачено':
+        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Оплачено</span>;
+      case 'В доставке':
+        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-cyan-100 text-cyan-800">В доставке</span>;
+      case 'Сделка закрыта':
+        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Сделка закрыта</span>;
       default:
         return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">{status}</span>;
     }
@@ -370,16 +373,12 @@ const RequestsList = () => {
         const cpMatch = filters.counterparty ? 
           (req.counterparty?.short_name.toLowerCase().includes(filters.counterparty.toLowerCase()) ||
           req.counterparty?.inn.includes(filters.counterparty)) : true;
-        const offerMatch = filters.offerCount ? (req.offers?.length || 0) === parseInt(filters.offerCount) : true;
-        return statusMatch && cpMatch && dateMatch && offerMatch;
+        return statusMatch && cpMatch && dateMatch;
       })
       .sort((a, b) => {
         let aValue: any, bValue: any;
 
-        if (sort.key === 'offerCount') {
-          aValue = a.offers?.length || 0;
-          bValue = b.offers?.length || 0;
-        } else if (sort.key === 'counterparty') {
+        if (sort.key === 'counterparty') {
           aValue = a.counterparty?.short_name || '';
           bValue = b.counterparty?.short_name || '';
         } else {
@@ -420,7 +419,7 @@ const RequestsList = () => {
     <div>
       {/* Фильтры */}
       <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label htmlFor="date-filter" className="block text-sm font-medium text-gray-700">Дата</label>
             <input type="date" id="date-filter" name="date" value={filters.date} onChange={handleFilterChange} className={clsInput} />
@@ -429,19 +428,17 @@ const RequestsList = () => {
             <label htmlFor="status-filter" className="block text-sm font-medium text-gray-700">Статус</label>
             <select id="status-filter" name="status" value={filters.status} onChange={handleFilterChange} className={clsInput}>
               <option value="">Все</option>
-              <option value="new">Новая</option>
-              <option value="pending">Ожидает</option>
-              <option value="awarded">В работе</option>
-              <option value="closed">Закрыта</option>
+              <option value="Заявка создана">Заявка создана</option>
+              <option value="Поиск поставщиков">Поиск поставщиков</option>
+              <option value="КП отправлено">КП отправлено</option>
+              <option value="Оплачено">Оплачено</option>
+              <option value="В доставке">В доставке</option>
+              <option value="Сделка закрыта">Сделка закрыта</option>
             </select>
           </div>
           <div>
             <label htmlFor="counterparty-filter" className="block text-sm font-medium text-gray-700">Контрагент</label>
             <input type="text" id="counterparty-filter" name="counterparty" value={filters.counterparty} onChange={handleFilterChange} placeholder="Название или ИНН" className={clsInput} />
-          </div>
-          <div>
-            <label htmlFor="offers-filter" className="block text-sm font-medium text-gray-700">Кол-во предложений</label>
-            <input type="number" id="offers-filter" name="offerCount" value={filters.offerCount} onChange={handleFilterChange} className={clsInput} />
           </div>
         </div>
       </div>
@@ -460,9 +457,6 @@ const RequestsList = () => {
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('status')}>
                 Статус{getSortIndicator('status')}
               </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('offerCount')}>
-                Предложения{getSortIndicator('offerCount')}
-              </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Адрес доставки
               </th>
@@ -472,20 +466,16 @@ const RequestsList = () => {
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Количество
               </th>
-              <th scope="col" className="relative px-6 py-3">
-                <span className="sr-only">Открыть</span>
-              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredAndSortedRequests.map((request) => (
-              <tr key={request.id} className="hover:bg-gray-50">
+              <tr key={request.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => window.location.href = `/request/my/${request.id}`}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{request.display_id}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(request.created_at).toLocaleDateString('ru-RU')}</td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   {getStatusBadge(request.status)}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">{request.offers?.length || 0}</td>
                 <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={request.delivery_address || ''}>{request.delivery_address}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {request.counterparty ? (
@@ -496,11 +486,6 @@ const RequestsList = () => {
                   ) : '—'}
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-500 text-center">{request.items.length}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <Link href={`/request/my/${request.id}`} className="text-amber-600 hover:text-amber-900">
-                    Открыть
-                  </Link>
-                </td>
               </tr>
             ))}
           </tbody>
@@ -961,13 +946,13 @@ ${emailFooter}`;
 
     if (!newCpForm.phone) {
       errors.phone = 'Обязательное поле';
-    } else if (!/^\+?[0-9\s\-()]{5,}$/.test(newCpForm.phone)) {
+    } else if (!/^\+?[0-9\s-()]{5,}$/.test(newCpForm.phone)) {
       errors.phone = 'Некорректный телефон';
     }
 
     if (!newCpForm.email) {
       errors.email = 'Обязательное поле';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newCpForm.email)) {
+    } else if (!/^[^\s@]+\@[^\s@]+\.[^\s@]+$/.test(newCpForm.email)) {
       errors.email = 'Некорректный e-mail';
     }
 
@@ -1231,7 +1216,7 @@ ${emailFooter}`;
         throw new Error(err.detail || 'Не удалось сохранить заявку');
       }
       const savedRequest: Request = await r.json();
-      addNotification({ type: 'success', title: 'Заявка сохранена', message: 'Ее можно посмотреть в Личном кабинете.' });
+      addNotification({ type: 'success', title: 'Заявка сохранена'});
       
       return savedRequest; // Возвращаем сохраненную заявку
     } catch (e:any) {
@@ -1389,7 +1374,7 @@ ${emailFooter}`;
             <nav className="-mb-px flex space-x-8" aria-label="Tabs">
               <button
                 onClick={() => setActiveTab('create')}
-                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${ 
                   activeTab === 'create'
                     ? 'border-amber-500 text-amber-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -1399,7 +1384,7 @@ ${emailFooter}`;
               </button>
               <button
                 onClick={() => setActiveTab('list')}
-                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${ 
                   activeTab === 'list'
                     ? 'border-amber-500 text-amber-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'

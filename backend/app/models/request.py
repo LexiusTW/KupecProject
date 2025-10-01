@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, Integer, String, ForeignKey, Float, DateTime, func, Boolean, Sequence, Date
+from sqlalchemy import Column, Integer, String, ForeignKey, Float, DateTime, func, Boolean, Sequence, Date, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.db.base_class import Base
@@ -17,13 +17,14 @@ class Request(Base):
     comment = Column(String, nullable=True)
     delivery_at = Column(Date, nullable=True) # Дата поставки
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    status = Column(String, nullable=False, server_default="new")
+    status = Column(String, nullable=False, server_default="Заявка создана")
     winner_offer_id = Column(Integer, ForeignKey("offers.id"), nullable=True)
 
     items = relationship("RequestItem", back_populates="request", cascade="all, delete-orphan")
     counterparty = relationship("Counterparty")
     offers = relationship("Offer", back_populates="request", foreign_keys="Offer.request_id", cascade="all, delete-orphan")
     winner_offer = relationship("Offer", foreign_keys=[winner_offer_id])
+    comments = relationship("Comment", back_populates="request", cascade="all, delete-orphan")
 
 class RequestItem(Base):
     __tablename__ = "request_items"
@@ -59,6 +60,7 @@ class RequestItem(Base):
     request = relationship("Request", back_populates="items")
 
 from app.models.supplier import Supplier
+from app.models.user import User
 
 class Offer(Base):
     __tablename__ = "offers"
@@ -103,3 +105,15 @@ class OfferItem(Base):
 
     offer = relationship("Offer", back_populates="items")
     request_item = relationship("RequestItem")
+
+class Comment(Base):
+    __tablename__ = "comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(UUID(as_uuid=True), ForeignKey("requests.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    request = relationship("Request", back_populates="comments")
+    user = relationship("User", back_populates="comments")

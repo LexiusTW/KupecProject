@@ -14,6 +14,9 @@ class User(Base):
     is_active = Column(Boolean(), default=True)
     role = Column(String, nullable=False)
 
+    parent_id = Column(Integer, ForeignKey("users.id"))
+    parent = relationship("User", remote_side=[id], backref="children")
+
     inn = Column(String, unique=True, index=True, nullable=True)
     company_name = Column(String, nullable=True)
     director_name = Column(String, nullable=True)
@@ -32,3 +35,5 @@ class User(Base):
 
     delivery_address = Column(String(500), nullable=True)
     email_footer = Column(Text, nullable=True)
+
+    comments = relationship("Comment", back_populates="user")

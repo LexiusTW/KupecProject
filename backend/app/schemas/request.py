@@ -123,6 +123,23 @@ class OfferOut(BaseModel):
     contract_file_path: Optional[str] = None
     model_config = {"from_attributes": True}
 
+class UserInComment(BaseModel):
+    id: int
+    employee_name: str
+    model_config = {"from_attributes": True}
+
+class CommentBase(BaseModel):
+    text: str
+
+class CommentCreate(CommentBase):
+    pass
+
+class CommentOut(CommentBase):
+    id: int
+    created_at: datetime
+    user: UserInComment
+    model_config = {"from_attributes": True}
+
 class RequestOut(BaseModel):
     id: UUID
     display_id: int
@@ -135,4 +152,5 @@ class RequestOut(BaseModel):
     items: List[RequestItemOut]
     offers: List[OfferOut]
     counterparty: Optional[CounterpartyInRequest] = None
+    comments: List[CommentOut] = []
     model_config = {"from_attributes": True}

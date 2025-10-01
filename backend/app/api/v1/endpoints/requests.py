@@ -16,12 +16,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.api.deps import get_db, get_current_user
 from app.core.config import settings
 from app.models.user import User
-from app.models.request import Request, RequestItem, Offer, OfferItem
+from app.models.request import Request, RequestItem, Offer, OfferItem, Comment
 from app.models.crm import Email
 from app.models.supplier import Supplier
 from app.models.offer_token import OfferToken
 from app.excel_processor import ExcelProcessor
-from app.schemas.request import RequestCreate, RequestOut, RequestItemCreate, RequestItemOut, OfferCreate
+from app.schemas.request import RequestCreate, RequestOut, RequestItemCreate, RequestItemOut, OfferCreate, CommentCreate, CommentOut
 from app.services.email_service import send_email_background
 
 router = APIRouter()
@@ -273,24 +273,35 @@ def _infer_kind(it: RequestItemCreate) -> str:
 @router.get("/requests/me", response_model=List[RequestOut])
 async def list_my_requests(
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     if user.role == "Продавец":
         return []
-    
-    q = (
-        select(Request)
-        .where(Request.user_id == user.id)
-        .options(
-            selectinload(Request.items),
-            selectinload(Request.offers).selectinload(Offer.items),
-            selectinload(Request.offers).selectinload(Offer.supplier),
-            joinedload(Request.counterparty)
-        )
-        .order_by(Request.created_at.desc())
+
+    query = select(Request).options(
+        selectinload(Request.items),
+        selectinload(Request.offers).selectinload(Offer.items),
+        selectinload(Request.offers).selectinload(Offer.supplier),
+        joinedload(Request.counterparty),
+        selectinload(Request.comments).selectinload(Comment.user),
     )
-    rows = (await db.execute(q)).scalars().all()
-    return rows
+
+    if user.role in ["Директор", "Снабженец"]:
+        pass  # No additional filters
+    elif user.role == "РОП":
+        # РОП видит свои заявки + заявки своих менеджеров
+        await db.refresh(user, ["children"])
+        manager_ids = [child.id for child in user.children]
+        manager_ids.append(user.id) 
+        query = query.where(Request.user_id.in_(manager_ids))
+    elif user.role == "Менеджер":
+        query = query.where(Request.user_id == user.id)
+    else:
+        # По умолчанию, если роль не определена, возвращаем только свои
+        query = query.where(Request.user_id == user.id)
+
+    requests = (await db.execute(query.order_by(Request.created_at.desc()))).scalars().all()
+    return requests
 
 @router.get("/requests/{request_id}", response_model=RequestOut)
 async def get_request_by_id(
@@ -304,7 +315,8 @@ async def get_request_by_id(
             selectinload(Request.items),
             selectinload(Request.offers).selectinload(Offer.items),
             selectinload(Request.offers).selectinload(Offer.supplier),
-            joinedload(Request.counterparty)
+            joinedload(Request.counterparty),
+            selectinload(Request.comments).selectinload(Comment.user)
         )
     )
     req = (await db.execute(q)).scalar_one_or_none()
@@ -370,7 +382,7 @@ async def create_request(
         db.add(row)
 
     await db.commit()
-    await db.refresh(req, attribute_names=["items", "counterparty", "offers"])
+    await db.refresh(req, attribute_names=["items", "counterparty", "offers", "comments"])
     return req
 
 
@@ -502,7 +514,7 @@ async def create_offer(
 
     # 7. Помечаем токен как использованный и обновляем статус заявки
     offer_token.is_used = True
-    req.status = "pending"
+    req.status = "КП отправлено"
     await db.commit()
 
     return {"message": "Offer created successfully"}
@@ -527,7 +539,7 @@ async def award_offer(
     if not req:
         raise HTTPException(status_code=404, detail="Request not found or access denied")
 
-    if req.status == "awarded":
+    if req.status == "Оплачено":
         raise HTTPException(status_code=400, detail="This request has already been awarded.")
 
     winning_offer = None
@@ -539,7 +551,7 @@ async def award_offer(
     if not winning_offer:
         raise HTTPException(status_code=404, detail="Offer not found for this request")
 
-    req.status = "awarded"
+    req.status = "Оплачено"
     req.winner_offer_id = winning_offer.id
     db.add(req)
     await db.commit()
@@ -619,6 +631,42 @@ async def archive_request_as_email(
     await db.refresh(email)
 
     return {"message": "Request has been sent and saved to your outbox.", "email_id": email.id}
+
+
+@router.post("/requests/{request_id}/comments", response_model=CommentOut, status_code=status.HTTP_201_CREATED)
+async def create_comment_for_request(
+    request_id: UUID,
+    comment: CommentCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    req = await db.get(Request, request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    db_comment = Comment(
+        **comment.model_dump(),
+        request_id=request_id,
+        user_id=user.id,
+    )
+    db.add(db_comment)
+    await db.commit()
+    await db.refresh(db_comment)
+    return db_comment
+
+
+@router.get("/requests/{request_id}/comments", response_model=List[CommentOut])
+async def list_comments_for_request(
+    request_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    req = await db.get(Request, request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    q = select(Comment).where(Comment.request_id == request_id).options(selectinload(Comment.user)).order_by(Comment.created_at.asc())
+    comments = (await db.execute(q)).scalars().all()
+    return comments
 
 
 @router.post("/requests/{request_id}/send-to-suppliers", status_code=status.HTTP_202_ACCEPTED)
