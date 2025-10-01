@@ -22,6 +22,7 @@ export default function RegisterForm() {
       password: '',
       email: '',
       role: 'Менеджер',
+      employee_name: '',
       director_name: '',
       legal_address: '',
     },
@@ -70,6 +71,7 @@ export default function RegisterForm() {
       password: data.password,
       email: data.email,
       role: data.role,
+      employee_name: data.employee_name,
       phone_number: data.phone_number?.replace(/\D/g, ''), // Отправляем только цифры
       director_name: data.director_name,
       legal_address: data.legal_address,
@@ -78,6 +80,11 @@ export default function RegisterForm() {
       kpp: data.organization?.kpp,
       okpo: data.organization?.okpo,
       okato_oktmo: data.organization?.okato,
+      company_name: data.organization?.value,
+      bank_account: undefined,
+      correspondent_account: undefined,
+      bic: undefined,
+      bank_name: undefined,
     };
 
     try {
@@ -256,6 +263,12 @@ export default function RegisterForm() {
           <option value="Снабженец">Снабженец</option>
         </select>
         {errors.role && <p className={err}>{errors.role.message}</p>}
+      </div>
+
+      <div>
+        <label htmlFor="employee_name" className={label}>ФИО сотрудника</label>
+        <input id="employee_name" type="text" {...register('employee_name', { required: 'ФИО сотрудника обязательно' })} className={input} autoComplete="name" />
+        {errors.employee_name && <p className={err}>{errors.employee_name.message}</p>}
       </div>
 
       <div>

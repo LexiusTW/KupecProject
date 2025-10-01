@@ -43,6 +43,7 @@ def create_user(db: Session, *, obj_in: UserCreate) -> User:
         email=obj_in.email,
         hashed_password=get_password_hash(obj_in.password),
         inn=obj_in.inn,
+        company_name=obj_in.company_name,
         director_name=obj_in.director_name or '',
         phone_number=obj_in.phone_number or '',
         legal_address=obj_in.legal_address or '',
@@ -51,7 +52,12 @@ def create_user(db: Session, *, obj_in: UserCreate) -> User:
         ogrn=obj_in.ogrn,
         kpp=obj_in.kpp,
         okpo=obj_in.okpo,
-        okato_oktmo=obj_in.okato_oktmo
+        okato_oktmo=obj_in.okato_oktmo,
+        employee_name=obj_in.employee_name,
+        bank_account=obj_in.bank_account,
+        correspondent_account=obj_in.correspondent_account,
+        bic=obj_in.bic,
+        bank_name=obj_in.bank_name
     )
     db.add(db_obj)
     db.commit()

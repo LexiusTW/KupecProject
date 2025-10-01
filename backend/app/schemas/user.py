@@ -16,7 +16,9 @@ class UserCreate(BaseModel):
     password: constr(min_length=8)  # type: ignore
     role: Role
     email: str
+    employee_name: str
     inn: Optional[str] = None
+    company_name: Optional[str] = None
     phone_number: Optional[str] = None
     director_name: Optional[str] = None
     legal_address: Optional[str] = None
@@ -24,6 +26,10 @@ class UserCreate(BaseModel):
     kpp: Optional[str] = None
     okpo: Optional[str] = None
     okato_oktmo: Optional[str] = None
+    bank_account: Optional[str] = None
+    correspondent_account: Optional[str] = None
+    bic: Optional[str] = None
+    bank_name: Optional[str] = None
 
 class UserProfileUpdate(BaseModel):
     delivery_address: Optional[str] = None
@@ -52,6 +58,7 @@ class UserSchema(BaseModel):
     delivery_address: Optional[str] = None
     email_footer: Optional[str] = None
     inn: Optional[str] = None
+    company_name: Optional[str] = None
     director_name: Optional[str] = None
     phone_number: Optional[str] = None
     legal_address: Optional[str] = None
@@ -59,5 +66,10 @@ class UserSchema(BaseModel):
     kpp: Optional[str] = None
     okpo: Optional[str] = None
     okato_oktmo: Optional[str] = None
+    employee_name: str
+    bank_account: Optional[str] = None
+    correspondent_account: Optional[str] = None
+    bic: Optional[str] = None
+    bank_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

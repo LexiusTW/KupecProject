@@ -13,53 +13,7 @@ const clsInput = 'w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm f
 const clsInputError = 'w-full px-3 py-2 border border-red-500 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500';
 
 
-/** ─────────── Типы ответа бэка (строго) ─────────── */
-type RequestItemMetal = {
-  id: number;
-  kind: 'metal';
-  category: string | null;
-  state_standard: string | null;
-  stamp: string | null;
-  thickness: number | null;
-  length: number | null;
-  width: number | null;
-  diameter: number | null;
-  size: string | null;
-  quantity: number | null;
-  allow_analogs: boolean | null;
-  comment: string | null;
-};
 
-type RequestItemGeneric = {
-  id: number;
-  kind: 'generic';
-  category: string | null;
-  name: string | null;
-  dims: string | null;
-  uom: string | null;
-  note: string | null;
-  quantity: number | null;
-  comment: string | null;
-};
-
-type RequestItem = RequestItemMetal | RequestItemGeneric;
-
-type RequestRow = {
-  id: string; // UUID
-  display_id: number;
-  created_at: string;
-  comment: string | null;
-  delivery_address: string | null;
-  delivery_at: string | null;
-  status: string;
-  items: RequestItem[];
-  offers: any[];
-  counterparty: {
-    id: number;
-    short_name: string;
-    inn: string;
-  } | null;
-};
 
 type Supplier = {
   id: number;
@@ -122,221 +76,7 @@ type SupplierFormErrors = { [K in keyof SupplierCreateForm]?: string };
 
 type Tab = 'requests' | 'suppliers' | 'counterparties' | 'profile';
 
-// --- Компонент для отображения списка заявок ---
-const RequestsList = () => {
-  const [requestsLoading, setRequestsLoading] = useState(true);
-  const [requests, setRequests] = useState<RequestRow[]>([]);
-  const [requestsError, setRequestsError] = useState<string | null>(null);
-  const [sort, setSort] = useState<{ key: keyof RequestRow | 'offerCount', order: 'asc' | 'desc' }>({ key: 'created_at', order: 'desc' });
-  const [filters, setFilters] = useState({
-    date: '',
-    status: '',
-    counterparty: '',
-    offerCount: '',
-  });
 
-  useEffect(() => {
-    async function fetchRequests() {
-      try {
-        setRequestsLoading(true);
-        setRequestsError(null);
-        const response = await fetch(`${API_BASE_URL}/api/v1/requests/me`, {
-          credentials: 'include',
-        });
-        if (!response.ok) {
-          const er = await response.json().catch(() => ({}));
-          throw new Error('Не удалось загрузить заявки');
-        }
-        const data = (await response.json()) as RequestRow[];
-        setRequests(Array.isArray(data) ? data : []);
-      } catch (e: any) {
-        setRequestsError(e.message || 'Ошибка загрузки');
-      } finally {
-        setRequestsLoading(false);
-      }
-    }
-    fetchRequests();
-  }, []);
-
-  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFilters(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleSort = (key: keyof RequestRow | 'offerCount') => {
-    setSort(prev => ({
-      key,
-      order: prev.key === key && prev.order === 'asc' ? 'desc' : 'asc',
-    }));
-  };
-
-  const getSortIndicator = (key: string) => {
-    if (sort.key !== key) return null;
-    return sort.order === 'asc' ? ' ▲' : ' ▼';
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'new':
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Новая</span>;
-      case 'pending':
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Ожидает</span>;
-      case 'awarded':
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">В работе</span>;
-      case 'closed':
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Закрыта</span>;
-      default:
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">{status}</span>;
-    }
-  };
-
-  const filteredAndSortedRequests = useMemo(() => {
-    return requests
-      .filter(req => {
-        const dateMatch = filters.date ? new Date(req.created_at).toISOString().split('T')[0] === filters.date : true;
-        const statusMatch = filters.status ? req.status === filters.status : true;
-        const cpMatch = filters.counterparty ? 
-          (req.counterparty?.short_name.toLowerCase().includes(filters.counterparty.toLowerCase()) ||
-          req.counterparty?.inn.includes(filters.counterparty)) : true;
-        const offerMatch = filters.offerCount ? (req.offers?.length || 0) === parseInt(filters.offerCount) : true;
-        return statusMatch && cpMatch && dateMatch && offerMatch;
-      })
-      .sort((a, b) => {
-        let aValue: any, bValue: any;
-
-        if (sort.key === 'offerCount') {
-          aValue = a.offers?.length || 0;
-          bValue = b.offers?.length || 0;
-        } else if (sort.key === 'counterparty') {
-          aValue = a.counterparty?.short_name || '';
-          bValue = b.counterparty?.short_name || '';
-        } else {
-          aValue = a[sort.key as keyof RequestRow];
-          bValue = b[sort.key as keyof RequestRow];
-        }
-
-        if (aValue < bValue) return sort.order === 'asc' ? -1 : 1;
-        if (aValue > bValue) return sort.order === 'asc' ? 1 : -1;
-        return 0;
-      });
-  }, [requests, filters, sort]);
-
-  if (requestsLoading) {
-    return (
-      <div className="bg-white rounded-xl shadow p-6">
-        <SkeletonLoader className="h-40 w-full" />
-      </div>
-    )
-  }
-
-  if (requestsError) {
-    return <div className="bg-white rounded-xl shadow p-6 text-red-600">{requestsError}</div>
-  }
-
-  if (requests.length === 0) {
-    return (
-      <div className="bg-white rounded-xl shadow p-6 text-center">
-        <p className="text-gray-700">У вас пока нет заявок.</p>
-        <Link href="/request" className="inline-block mt-4 border border-amber-600 text-amber-700 px-4 py-2 rounded-md hover:bg-amber-50">
-          Оставить первую заявку
-        </Link>
-      </div>
-    )
-  }
-
-  return (
-    <div>
-      {/* Фильтры */}
-      <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label htmlFor="date-filter" className="block text-sm font-medium text-gray-700">Дата</label>
-            <input type="date" id="date-filter" name="date" value={filters.date} onChange={handleFilterChange} className={clsInput} />
-          </div>
-          <div>
-            <label htmlFor="status-filter" className="block text-sm font-medium text-gray-700">Статус</label>
-            <select id="status-filter" name="status" value={filters.status} onChange={handleFilterChange} className={clsInput}>
-              <option value="">Все</option>
-              <option value="new">Новая</option>
-              <option value="pending">Ожидает</option>
-              <option value="awarded">В работе</option>
-              <option value="closed">Закрыта</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="counterparty-filter" className="block text-sm font-medium text-gray-700">Контрагент</label>
-            <input type="text" id="counterparty-filter" name="counterparty" value={filters.counterparty} onChange={handleFilterChange} placeholder="Название или ИНН" className={clsInput} />
-          </div>
-          <div>
-            <label htmlFor="offers-filter" className="block text-sm font-medium text-gray-700">Кол-во предложений</label>
-            <input type="number" id="offers-filter" name="offerCount" value={filters.offerCount} onChange={handleFilterChange} className={clsInput} />
-          </div>
-        </div>
-      </div>
-
-      {/* Таблица заявок */}
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('display_id')}>
-                № заявки{getSortIndicator('display_id')}
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('created_at')}>
-                Дата создания{getSortIndicator('created_at')}
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('status')}>
-                Статус{getSortIndicator('status')}
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('offerCount')}>
-                Предложения{getSortIndicator('offerCount')}
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Адрес доставки
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('counterparty')}>
-                Контрагент{getSortIndicator('counterparty')}
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Количество
-              </th>
-              <th scope="col" className="relative px-6 py-3">
-                <span className="sr-only">Открыть</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredAndSortedRequests.map((request) => (
-              <tr key={request.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{request.display_id}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(request.created_at).toLocaleDateString('ru-RU')}</td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  {getStatusBadge(request.status)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">{request.offers?.length || 0}</td>
-                <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={request.delivery_address || ''}>{request.delivery_address}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {request.counterparty ? (
-                    <div>
-                      <div>{request.counterparty.short_name}</div>
-                      <div className="text-xs text-gray-400">ИНН: {request.counterparty.inn}</div>
-                    </div>
-                  ) : '—'}
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500 text-center">{request.items.length}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <Link href={`/account/requests/${request.id}`} className="text-amber-600 hover:text-amber-900">
-                    Открыть
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
 
 // --- Компонент для отображения списка поставщиков ---
 const SuppliersList = ({ suppliers, onEdit, loading, error }: { suppliers: Supplier[], onEdit: (supplier: Supplier) => void, loading: boolean, error: string | null }) => {
@@ -852,7 +592,7 @@ const ProfileSettings = ({ addNotification }: { addNotification: (notif: Omit<No
 
 
 export default function AccountPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('requests');
+  const [activeTab, setActiveTab] = useState<Tab>('suppliers');
 
   // Состояние для уведомлений
   const [notifications, setNotifications] = useState<Omit<NotificationProps, 'onDismiss'>[]>([]);
@@ -1584,16 +1324,7 @@ export default function AccountPage() {
           {/* Вкладки */}
           <div className="border-b border-gray-200 mb-6">
             <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-              <button
-                onClick={() => setActiveTab('requests')}
-                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'requests'
-                    ? 'border-amber-500 text-amber-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Мои заявки
-              </button>
+
               <button
                 onClick={() => setActiveTab('suppliers')}
                 className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
@@ -1629,7 +1360,7 @@ export default function AccountPage() {
 
           {/* Контент вкладок */}
           <div>
-            {activeTab === 'requests' && <RequestsList />}
+
             {activeTab === 'profile' && <ProfileSettings addNotification={addNotification} />}
 
             {activeTab === 'suppliers' && (

@@ -15,6 +15,7 @@ class User(Base):
     role = Column(String, nullable=False)
 
     inn = Column(String, unique=True, index=True, nullable=True)
+    company_name = Column(String, nullable=True)
     director_name = Column(String, nullable=True)
     phone_number = Column(String, unique=True, nullable=True)
     legal_address = Column(String, nullable=True)
@@ -22,6 +23,12 @@ class User(Base):
     kpp = Column(String, nullable=True)
     okpo = Column(String, nullable=True)
     okato_oktmo = Column(String, nullable=True)
+
+    employee_name = Column(String, nullable=False)
+    bank_account = Column(String, nullable=True)
+    correspondent_account = Column(String, nullable=True)
+    bic = Column(String, nullable=True)
+    bank_name = Column(String, nullable=True)
 
     delivery_address = Column(String(500), nullable=True)
     email_footer = Column(Text, nullable=True)

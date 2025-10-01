@@ -5,6 +5,7 @@ import Header from '../components/Header';
 import Footer from '../components/Footer';
 import SkeletonLoader from '../components/SkeletonLoader';
 import Notification, { NotificationProps } from '../components/Notification';
+import Link from 'next/link';
 
 const API_BASE_URL = 'https://kupecbek.cloudpub.ru';
 
@@ -29,8 +30,12 @@ const units = [
   { value: 'дм³', label: 'Кубический дециметр (дм³)' },
 ];
 
+
+
 // ---------------- Types ----------------
 type RowKind = 'metal' | 'generic';
+
+
 
 type Supplier = {
   id: number;
@@ -94,6 +99,22 @@ type SavedGenericItem = {
   allow_analogs: boolean;
   comment: string;
 };
+
+type RequestRow = {
+  id: string;
+  display_id: string;
+  created_at: string;
+  status: 'new' | 'pending' | 'awarded' | 'closed';
+  delivery_address: string;
+  counterparty: {
+    id: number;
+    short_name: string;
+    inn: string;
+  } | null;
+  items: SavedItem[];
+  offers: any[]; // Adjust this type if you have a specific Offer type
+};
+
 
 type SavedItem = SavedMetalItem | SavedGenericItem;
 
@@ -259,124 +280,238 @@ const ItemSelectionDropdown = ({ items, selectedIds, onSelectionChange, catKind,
 };
 
 const PreviewItemsTable = ({ items }: { items: SavedItem[] }) => {
-  const isMetalOnly = items.every(item => item.kind === 'metal');
-  const isGenericOnly = items.every(item => item.kind === 'generic');
-
-  if (isMetalOnly) {
-    return (
-      <table className="w-full min-w-[600px] text-xs border-collapse">
-        <thead className="bg-gray-100 sticky top-0">
-          <tr>
-            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Категория</th>
-            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Наименование</th>
-            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Размер</th>
-            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">ГОСТ</th>
-            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Марка</th>
-            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Аналоги</th>
-            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Количество</th>
-            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Ед. изм.</th>
-            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Комментарий</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map(item => {
-            const metalItem = item as SavedMetalItem;
-            return (
-              <tr key={item.id} className="border-t border-gray-200">
-                <td className="p-2 align-top">Металлопрокат</td>
-                <td className="p-2 align-top">{metalItem.category || '—'}</td>
-                <td className="p-2 align-top">{metalItem.size || '—'}</td>
-                <td className="p-2 align-top">{metalItem.state_standard || '—'}</td>
-                <td className="p-2 align-top">{metalItem.stamp || '—'}</td>
-                <td className="p-2 align-top">{metalItem.allow_analogs ? 'Да' : 'Нет'}</td>
-                <td className="p-2 align-top whitespace-nowrap">{metalItem.quantity}</td>
-                <td className="p-2 align-top whitespace-nowrap">{metalItem.unit || 'шт.'}</td>
-                <td className="p-2 align-top">{metalItem.comment || '—'}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    );
-  }
-
-  if (isGenericOnly) {
-    return (
-      <table className="w-full min-w-[500px] text-xs border-collapse">
-        <thead className="bg-gray-100 sticky top-0">
-          <tr>
-            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Наименование</th>
-            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Размеры, характеристики</th>
-            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Аналоги</th>
-            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Ед. изм.</th>
-            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Количество</th>
-            <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Комментарий</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map(item => {
-            const genericItem = item as SavedGenericItem;
-            return (
-              <tr key={item.id} className="border-t border-gray-200">
-                <td className="p-2 align-top">{genericItem.name}</td>
-                <td className="p-2 align-top">{genericItem.dims || '—'}</td>
-                <td className="p-2 align-top">{genericItem.allow_analogs ? 'Да' : 'Нет'}</td>
-                <td className="p-2 align-top whitespace-nowrap">{genericItem.unit || 'шт.'}</td>
-                <td className="p-2 align-top whitespace-nowrap">{genericItem.quantity}</td>
-                <td className="p-2 align-top">{genericItem.comment || '—'}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    );
-  }
-
   return (
-    <table className="w-full min-w-[700px] text-xs border-collapse">
-      <thead className="bg-gray-100 sticky top-0">
-        <tr>
-          <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Категория</th>
-          <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Наименование</th>
-          <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Характеристики</th>
-          <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Аналоги</th>
-          <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Кол-во</th>
-          <th className="p-2 font-semibold text-left border-b-2 border-gray-200">Комментарий</th>
-        </tr>
-      </thead>
+    <table className="w-full text-left text-sm">
       <tbody>
-        {items.map(item => {
-          if (item.kind === 'metal') {
-            const metalItem = item as SavedMetalItem;
-            return (
-              <tr key={item.id} className="border-t border-gray-200">
-                <td className="p-2 align-top">Металлопрокат</td>
-                <td className="p-2 align-top">{metalItem.category}</td>
-                <td className="p-2 align-top">{[metalItem.size, metalItem.stamp, metalItem.state_standard].filter(Boolean).join(', ')}</td>
-                <td className="p-2 align-top">{metalItem.allow_analogs ? 'Да' : 'Нет'}</td>
-                <td className="p-2 align-top whitespace-nowrap">{metalItem.quantity} {metalItem.unit || 'шт.'}</td>
-                <td className="p-2 align-top">{metalItem.comment || '—'}</td>
-              </tr>
-            );
-          }
-          const genericItem = item as SavedGenericItem;
-          return (
-            <tr key={item.id} className="border-t border-gray-200">
-              <td className="p-2 align-top">{genericItem.category}</td>
-              <td className="p-2 align-top">{genericItem.name}</td>
-              <td className="p-2 align-top">{genericItem.dims || '—'}</td>
-              <td className="p-2 align-top">{genericItem.allow_analogs ? 'Да' : 'Нет'}</td>
-              <td className="p-2 align-top whitespace-nowrap">{genericItem.quantity} {genericItem.unit || 'шт.'}</td>
-              <td className="p-2 align-top">{genericItem.comment || '—'}</td>
-            </tr>
-          );
-        })}
+        {items.map(item => (
+          <tr key={item.id} className="border-b last:border-b-0">
+            <td className="py-1.5">{formatSavedItem(item)}</td>
+          </tr>
+        ))}
       </tbody>
     </table>
   );
 };
 
+type Tab = 'create' | 'list';
+
+const RequestsList = () => {
+  const [requestsLoading, setRequestsLoading] = useState(true);
+  const [requests, setRequests] = useState<RequestRow[]>([]);
+  const [requestsError, setRequestsError] = useState<string | null>(null);
+  const [sort, setSort] = useState<{ key: keyof RequestRow | 'offerCount', order: 'asc' | 'desc' }>({ key: 'created_at', order: 'desc' });
+  const [filters, setFilters] = useState({
+    date: '',
+    status: '',
+    counterparty: '',
+    offerCount: '',
+  });
+
+  useEffect(() => {
+    async function fetchRequests() {
+      try {
+        setRequestsLoading(true);
+        setRequestsError(null);
+        const response = await fetch(`${API_BASE_URL}/api/v1/requests/me`, {
+          credentials: 'include',
+        });
+        if (!response.ok) {
+          const er = await response.json().catch(() => ({}));
+          throw new Error('Не удалось загрузить заявки');
+        }
+        const data = (await response.json()) as RequestRow[];
+        setRequests(Array.isArray(data) ? data : []);
+      } catch (e: any) {
+        setRequestsError(e.message || 'Ошибка загрузки');
+      } finally {
+        setRequestsLoading(false);
+      }
+    }
+    fetchRequests();
+  }, []);
+
+  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFilters(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSort = (key: keyof RequestRow | 'offerCount') => {
+    setSort(prev => ({
+      key,
+      order: prev.key === key && prev.order === 'asc' ? 'desc' : 'asc',
+    }));
+  };
+
+  const getSortIndicator = (key: string) => {
+    if (sort.key !== key) return null;
+    return sort.order === 'asc' ? ' ▲' : ' ▼';
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'new':
+        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Новая</span>;
+      case 'pending':
+        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Ожидает</span>;
+      case 'awarded':
+        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">В работе</span>;
+      case 'closed':
+        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Закрыта</span>;
+      default:
+        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">{status}</span>;
+    }
+  };
+
+  const filteredAndSortedRequests = useMemo(() => {
+    return requests
+      .filter(req => {
+        const dateMatch = filters.date ? new Date(req.created_at).toISOString().split('T')[0] === filters.date : true;
+        const statusMatch = filters.status ? req.status === filters.status : true;
+        const cpMatch = filters.counterparty ? 
+          (req.counterparty?.short_name.toLowerCase().includes(filters.counterparty.toLowerCase()) ||
+          req.counterparty?.inn.includes(filters.counterparty)) : true;
+        const offerMatch = filters.offerCount ? (req.offers?.length || 0) === parseInt(filters.offerCount) : true;
+        return statusMatch && cpMatch && dateMatch && offerMatch;
+      })
+      .sort((a, b) => {
+        let aValue: any, bValue: any;
+
+        if (sort.key === 'offerCount') {
+          aValue = a.offers?.length || 0;
+          bValue = b.offers?.length || 0;
+        } else if (sort.key === 'counterparty') {
+          aValue = a.counterparty?.short_name || '';
+          bValue = b.counterparty?.short_name || '';
+        } else {
+          aValue = a[sort.key as keyof RequestRow];
+          bValue = b[sort.key as keyof RequestRow];
+        }
+
+        if (aValue < bValue) return sort.order === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sort.order === 'asc' ? 1 : -1;
+        return 0;
+      });
+  }, [requests, filters, sort]);
+
+  if (requestsLoading) {
+    return (
+      <div className="bg-white rounded-xl shadow p-6">
+        <SkeletonLoader className="h-40 w-full" />
+      </div>
+    )
+  }
+
+  if (requestsError) {
+    return <div className="bg-white rounded-xl shadow p-6 text-red-600">{requestsError}</div>
+  }
+
+  if (requests.length === 0) {
+    return (
+      <div className="bg-white rounded-xl shadow p-6 text-center">
+        <p className="text-gray-700">У вас пока нет заявок.</p>
+        <Link href="/request" className="inline-block mt-4 border border-amber-600 text-amber-700 px-4 py-2 rounded-md hover:bg-amber-50">
+          Оставить первую заявку
+        </Link>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {/* Фильтры */}
+      <div className="bg-white p-4 rounded-lg shadow mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label htmlFor="date-filter" className="block text-sm font-medium text-gray-700">Дата</label>
+            <input type="date" id="date-filter" name="date" value={filters.date} onChange={handleFilterChange} className={clsInput} />
+          </div>
+          <div>
+            <label htmlFor="status-filter" className="block text-sm font-medium text-gray-700">Статус</label>
+            <select id="status-filter" name="status" value={filters.status} onChange={handleFilterChange} className={clsInput}>
+              <option value="">Все</option>
+              <option value="new">Новая</option>
+              <option value="pending">Ожидает</option>
+              <option value="awarded">В работе</option>
+              <option value="closed">Закрыта</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="counterparty-filter" className="block text-sm font-medium text-gray-700">Контрагент</label>
+            <input type="text" id="counterparty-filter" name="counterparty" value={filters.counterparty} onChange={handleFilterChange} placeholder="Название или ИНН" className={clsInput} />
+          </div>
+          <div>
+            <label htmlFor="offers-filter" className="block text-sm font-medium text-gray-700">Кол-во предложений</label>
+            <input type="number" id="offers-filter" name="offerCount" value={filters.offerCount} onChange={handleFilterChange} className={clsInput} />
+          </div>
+        </div>
+      </div>
+
+      {/* Таблица заявок */}
+      <div className="bg-white rounded-lg shadow overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('display_id')}>
+                № заявки{getSortIndicator('display_id')}
+              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('created_at')}>
+                Дата создания{getSortIndicator('created_at')}
+              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('status')}>
+                Статус{getSortIndicator('status')}
+              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('offerCount')}>
+                Предложения{getSortIndicator('offerCount')}
+              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Адрес доставки
+              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('counterparty')}>
+                Контрагент{getSortIndicator('counterparty')}
+              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Количество
+              </th>
+              <th scope="col" className="relative px-6 py-3">
+                <span className="sr-only">Открыть</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {filteredAndSortedRequests.map((request) => (
+              <tr key={request.id} className="hover:bg-gray-50">
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{request.display_id}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(request.created_at).toLocaleDateString('ru-RU')}</td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {getStatusBadge(request.status)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">{request.offers?.length || 0}</td>
+                <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={request.delivery_address || ''}>{request.delivery_address}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {request.counterparty ? (
+                    <div>
+                      <div>{request.counterparty.short_name}</div>
+                      <div className="text-xs text-gray-400">ИНН: {request.counterparty.inn}</div>
+                    </div>
+                  ) : '—'}
+                </td>
+                <td className="px-6 py-4 text-sm text-gray-500 text-center">{request.items.length}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <Link href={`/request/my/${request.id}`} className="text-amber-600 hover:text-amber-900">
+                    Открыть
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 export default function RequestPage() {
+  const [activeTab, setActiveTab] = useState<Tab>('create');
   // ---------------- Header fields ----------------
   const [title, setTitle] = useState('');
   const [deliveryAt, setDeliveryAt] = useState('');
@@ -530,7 +665,7 @@ ${emailFooter}`;
         const [addressRes, counterpartiesRes, suppliersRes, categoriesRes, stampsRes, gostsRes, footerRes] = await Promise.all([
           fetch(`${API_BASE_URL}/api/v1/users/me/address`, { credentials: 'include' }).catch(() => null),
           fetch(`${API_BASE_URL}/api/v1/counterparties`, { credentials: 'include' }).catch(() => null),
-          fetch(`${API_BASE_URL}/api/v1/suppliers/my`, { credentials: 'include' }).catch(() => null),
+          fetch(`${API_BASE_URL}/api/v1/suppliers/request/my`, { credentials: 'include' }).catch(() => null),
           fetch(`${API_BASE_URL}/api/v1/categories`, { credentials: 'include' }).catch(() => null),
           fetch(`${API_BASE_URL}/api/v1/stamps`, { credentials: 'include' }).catch(() => null),
           fetch(`${API_BASE_URL}/api/v1/gosts`, { credentials: 'include' }).catch(() => null),
@@ -1249,726 +1384,755 @@ ${emailFooter}`;
           ))}
         </div>
 
-        <div className="container mx-auto px-4 py-8 space-y-6">
-
-          {/* ---- Шапка заявки ---- */}
-          <div className="bg-white rounded-xl shadow p-5">
-            {isLoading ? (
-              // --- Скелетон для шапки ---
-              <>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                  <div className="space-y-1"><SkeletonLoader className="h-5 w-32" /><SkeletonLoader className="h-10 w-full" /></div>
-                  <div className="space-y-1"><SkeletonLoader className="h-5 w-40" /><SkeletonLoader className="h-10 w-full" /></div>
-                  <div className="space-y-1"><SkeletonLoader className="h-5 w-28" /><SkeletonLoader className="h-10 w-full" /></div>
-                  <div className="space-y-1"><SkeletonLoader className="h-5 w-24" /><SkeletonLoader className="h-10 w-full" /></div>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <SkeletonLoader className="h-10 w-28" />
-                  <SkeletonLoader className="h-10 w-28" />
-                </div>
-              </>
-            ) : (
-              // --- Реальный контент шапки --- 
-              <>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                  <div className="lg:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Название заявки*</label>
-                    <input
-                      className={headerErrors.title ? clsInputError : clsInput}
-                      value={title}
-                      onChange={(e) => { setTitle(e.target.value); if (headerErrors.title) setHeaderErrors(p => ({ ...p, title: undefined })); }}
-                      placeholder="Например: Поставка на объект А"
-                    />
-                    {headerErrors.title && <p className="text-xs text-red-600 mt-1">{headerErrors.title}</p>}
-                  </div>
-                  <div className="lg:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Дата поставки*</label>
-                    <input
-                      type="date"
-                      className={headerErrors.deliveryAt ? clsInputError : clsInput}
-                      value={deliveryAt}
-                      onChange={(e) => { setDeliveryAt(e.target.value); if (headerErrors.deliveryAt) setHeaderErrors(p => ({ ...p, deliveryAt: undefined })); }}
-                    />
-                    {headerErrors.deliveryAt && <p className="text-xs text-red-600 mt-1">{headerErrors.deliveryAt}</p>}
-                  </div>
-
-                  {/* Адрес */}
-                  <div className="lg:col-span-1 relative">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Адрес поставки</label>
-                    <div className="flex gap-2 items-center">
-                      <div className="relative flex-1">
-                        <input
-                          className={`${headerErrors.address ? clsInputError : clsInput} w-full`}
-                          value={address}
-                          onFocus={()=>{
-                            setAddrFocus(true);
-                            setAddrQuery(address);
-                          }}
-                          onBlur={onBlurAddress}
-                          onChange={(e)=>{
-                            setAddress(e.target.value);
-                            setAddrQuery(e.target.value);
-                            setAddressSaved(false);
-                            if (headerErrors.address) setHeaderErrors(p => ({ ...p, address: undefined }));
-                          }}
-                          placeholder="Начните вводить адрес..."
-                          disabled={addressSaved && address.length > 0} // Поле disabled, если адрес сохранен и не пуст
-                        />
-                        {headerErrors.address && <p className="text-xs text-red-600 mt-1">{headerErrors.address}</p>}
-                        {addrFocus && addrSugg.length > 0 && (
-                          <div className="absolute z-20 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
-                            {addrSugg.map((s, i) => (
-                              <button
-                                type="button"
-                                key={i}
-                                onMouseDown={() => onPickAddress(s.unrestricted_value || s.value)}
-                                className="block w-full text-left px-3 py-2 hover:bg-amber-50"
-                              >
-                                {s.unrestricted_value || s.value}
-                              </button>
-                            ))}
-                            {addrLoading && <div className="px-3 py-2 text-xs text-gray-500">Загрузка...</div>}
-                            {addrSugg.length === 0 && !addrLoading && addrQuery.length >= 3 && <div className="px-3 py-2 text-xs text-gray-500">Ничего не найдено</div>}
-                          </div>
-                        )}
-                      </div>
-
-                      {addressSaved && address.length > 0 ? (
-                        <button type="button" onClick={clearAddress} className="px-3 py-2 border border-gray-300 rounded-md whitespace-nowrap">Очистить</button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={onSaveAddressClick}
-                          className={`px-3 py-2 rounded-md whitespace-nowrap ${address.trim().length === 0 ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-amber-600 text-white'}`}
-                          disabled={address.trim().length === 0 || addrLoading}
-                        >
-                          {addrLoading ? 'Сохранение...' : 'Сохранить'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* ---- Блок выбора контрагента ---- */}
-                  <div className="lg:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Контрагент*</label>
-                    <div className="flex items-start gap-3">
-                      <div className="relative flex-grow">
-                        <input
-                          className={headerErrors.counterparty ? clsInputError : clsInput}
-                          placeholder="Начните вводить ИНН или название для поиска..."
-                          value={cpSearchQuery}
-                          onChange={e => { setCpSearchQuery(e.target.value); setSelectedCp(null); if (headerErrors.counterparty) setHeaderErrors(p => ({ ...p, counterparty: undefined })); }}
-                          onFocus={() => setCpFocus(true)}
-                          onBlur={() => setTimeout(() => setCpFocus(false), 150)}
-                        />
-                        {headerErrors.counterparty && <p className="text-xs text-red-600 mt-1">{headerErrors.counterparty}</p>}
-                        {cpSuggestions.length > 0 && (
-                          <div className="absolute z-10 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
-                            {cpSuggestions.map(cp => (
-                              <button
-                                type="button"
-                                key={cp.id}
-                                onMouseDown={() => handleSelectCp({ target: { value: String(cp.id) } } as any)}
-                                className="block w-full text-left px-3 py-2 hover:bg-amber-50"
-                              >
-                                {cp.short_name} (ИНН: {cp.inn})
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <button type="button" onClick={() => setShowCpCreateModal(true)} className="px-4 py-2 bg-emerald-600 text-white rounded-md whitespace-nowrap">
-                        + Добавить
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <button type="button" onClick={saveRequest} disabled={isSubmitting} className={`bg-amber-600 text-white ${clsBtn} disabled:opacity-50`}>{isSubmitting ? 'Сохранение...' : 'Сохранить'}</button>
-                  <button type="button" onClick={handleOpenSendModal} disabled={isSubmitting || allSavedItems.length === 0} className={`border border-amber-600 text-amber-700 ${clsBtn} disabled:opacity-50`}>Разослать</button>
-                </div>
-              </>
-            )}
+        <div className="container mx-auto px-4 py-8">
+          <div className="border-b border-gray-200 mb-6">
+            <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+              <button
+                onClick={() => setActiveTab('create')}
+                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'create'
+                    ? 'border-amber-500 text-amber-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Новая заявка
+              </button>
+              <button
+                onClick={() => setActiveTab('list')}
+                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'list'
+                    ? 'border-amber-500 text-amber-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Мои заявки
+              </button>
+            </nav>
           </div>
 
-          {/* ---- Модальное окно создания контрагента ---- */}
-          {showCpCreateModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-xl shadow-xl p-6 space-y-4 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-                <h3 className="text-xl font-semibold">Новый контрагент</h3>
-                
-                {/* Поиск по DaData */}
-                <div className="relative">
-                  <label className="text-xs text-gray-600">Поиск организации для автоматического заполнения</label>
-                  <input
-                    className={clsInput}
-                    placeholder="Введите ИНН, ОГРН или название организации для автозаполнения"
-                    value={cpDadataQuery}
-                    onChange={e => setCpDadataQuery(e.target.value)}
-                    onFocus={() => setCpDadataFocus(true)}
-                    onBlur={() => setTimeout(() => setCpDadataFocus(false), 200)}
-                  />
-                  {cpDadataLoading && <div className="text-xs text-gray-500 mt-1">Поиск...</div>}
-                  {cpDadataFocus && cpDadataSugg.length > 0 && (
-                    <div className="absolute z-40 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow-lg">
-                      {cpDadataSugg.map((p, i) => (
-                        <button type="button" key={i} onMouseDown={() => handlePickDadataParty(p)} className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm">
-                          <div className="font-semibold">{p.short_name || p.value}</div>
-                          <div className="text-xs text-gray-600">ИНН: {p.inn}, {p.legal_address}</div>
-                        </button>
-                      ))}
+          {activeTab === 'create' && (
+            <div className="space-y-6">
+              {/* ---- Шапка заявки ---- */}
+              <div className="bg-white rounded-xl shadow p-5">
+                {isLoading ? (
+                  // --- Скелетон для шапки ---
+                  <>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                      <div className="space-y-1"><SkeletonLoader className="h-5 w-32" /><SkeletonLoader className="h-10 w-full" /></div>
+                      <div className="space-y-1"><SkeletonLoader className="h-5 w-40" /><SkeletonLoader className="h-10 w-full" /></div>
+                      <div className="space-y-1"><SkeletonLoader className="h-5 w-28" /><SkeletonLoader className="h-10 w-full" /></div>
+                      <div className="space-y-1"><SkeletonLoader className="h-5 w-24" /><SkeletonLoader className="h-10 w-full" /></div>
                     </div>
-                  )}
-                </div>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <SkeletonLoader className="h-10 w-28" />
+                      <SkeletonLoader className="h-10 w-28" />
+                    </div>
+                  </>
+                ) : (
+                  // --- Реальный контент шапки --- 
+                  <>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                      <div className="lg:col-span-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Название заявки*</label>
+                        <input
+                          className={headerErrors.title ? clsInputError : clsInput}
+                          value={title}
+                          onChange={(e) => { setTitle(e.target.value); if (headerErrors.title) setHeaderErrors(p => ({ ...p, title: undefined })); }}
+                          placeholder="Например: Поставка на объект А"
+                        />
+                        {headerErrors.title && <p className="text-xs text-red-600 mt-1">{headerErrors.title}</p>}
+                      </div>
+                      <div className="lg:col-span-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Дата поставки*</label>
+                        <input
+                          type="date"
+                          className={headerErrors.deliveryAt ? clsInputError : clsInput}
+                          value={deliveryAt}
+                          onChange={(e) => { setDeliveryAt(e.target.value); if (headerErrors.deliveryAt) setHeaderErrors(p => ({ ...p, deliveryAt: undefined })); }}
+                        />
+                        {headerErrors.deliveryAt && <p className="text-xs text-red-600 mt-1">{headerErrors.deliveryAt}</p>}
+                      </div>
 
-                {/* Основное */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
-                  <h4 className="md:col-span-3 text-md font-semibold text-gray-800">Основные реквизиты</h4>
-                  <div>
-                    <label className="text-xs text-gray-600">Краткое наименование*</label>
-                    <input className={cpFormErrors.short_name ? clsInputError : clsInput} placeholder="ООО Ромашка" value={newCpForm.short_name || ''} onChange={e => handleCpFormChange('short_name', e.target.value)} />
-                    {cpFormErrors.short_name && <p className="text-xs text-red-600 mt-1">{cpFormErrors.short_name}</p>}
-                  </div>
-                  <div className="md:col-span-2">
+                      {/* Адрес */}
+                      <div className="lg:col-span-1 relative">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Адрес поставки</label>
+                        <div className="flex gap-2 items-center">
+                          <div className="relative flex-1">
+                            <input
+                              className={`${headerErrors.address ? clsInputError : clsInput} w-full`}
+                              value={address}
+                              onFocus={()=>{
+                                setAddrFocus(true);
+                                setAddrQuery(address);
+                              }}
+                              onBlur={onBlurAddress}
+                              onChange={(e)=>{
+                                setAddress(e.target.value);
+                                setAddrQuery(e.target.value);
+                                setAddressSaved(false);
+                                if (headerErrors.address) setHeaderErrors(p => ({ ...p, address: undefined }));
+                              }}
+                              placeholder="Начните вводить адрес..."
+                              disabled={addressSaved && address.length > 0} // Поле disabled, если адрес сохранен и не пуст
+                            />
+                            {headerErrors.address && <p className="text-xs text-red-600 mt-1">{headerErrors.address}</p>}
+                            {addrFocus && addrSugg.length > 0 && (
+                              <div className="absolute z-20 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
+                                {addrSugg.map((s, i) => (
+                                  <button
+                                    type="button"
+                                    key={i}
+                                    onMouseDown={() => onPickAddress(s.unrestricted_value || s.value)}
+                                    className="block w-full text-left px-3 py-2 hover:bg-amber-50"
+                                  >
+                                    {s.unrestricted_value || s.value}
+                                  </button>
+                                ))}
+                                {addrLoading && <div className="px-3 py-2 text-xs text-gray-500">Загрузка...</div>}
+                                {addrSugg.length === 0 && !addrLoading && addrQuery.length >= 3 && <div className="px-3 py-2 text-xs text-gray-500">Ничего не найдено</div>}
+                              </div>
+                            )}
+                          </div>
+
+                          {addressSaved && address.length > 0 ? (
+                            <button type="button" onClick={clearAddress} className="px-3 py-2 border border-gray-300 rounded-md whitespace-nowrap">Очистить</button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={onSaveAddressClick}
+                              className={`px-3 py-2 rounded-md whitespace-nowrap ${address.trim().length === 0 ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-amber-600 text-white'}`}
+                              disabled={address.trim().length === 0 || addrLoading}
+                            >
+                              {addrLoading ? 'Сохранение...' : 'Сохранить'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ---- Блок выбора контрагента ---- */}
+                      <div className="lg:col-span-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Контрагент*</label>
+                        <div className="flex items-start gap-3">
+                          <div className="relative flex-grow">
+                            <input
+                              className={headerErrors.counterparty ? clsInputError : clsInput}
+                              placeholder="Начните вводить ИНН или название для поиска..."
+                              value={cpSearchQuery}
+                              onChange={e => { setCpSearchQuery(e.target.value); setSelectedCp(null); if (headerErrors.counterparty) setHeaderErrors(p => ({ ...p, counterparty: undefined })); }}
+                              onFocus={() => setCpFocus(true)}
+                              onBlur={() => setTimeout(() => setCpFocus(false), 150)}
+                            />
+                            {headerErrors.counterparty && <p className="text-xs text-red-600 mt-1">{headerErrors.counterparty}</p>}
+                            {cpSuggestions.length > 0 && (
+                              <div className="absolute z-10 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow">
+                                {cpSuggestions.map(cp => (
+                                  <button
+                                    type="button"
+                                    key={cp.id}
+                                    onMouseDown={() => handleSelectCp({ target: { value: String(cp.id) } } as any)}
+                                    className="block w-full text-left px-3 py-2 hover:bg-amber-50"
+                                  >
+                                    {cp.short_name} (ИНН: {cp.inn})
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <button type="button" onClick={() => setShowCpCreateModal(true)} className="px-4 py-2 bg-emerald-600 text-white rounded-md whitespace-nowrap">
+                            + Добавить
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button type="button" onClick={saveRequest} disabled={isSubmitting} className={`bg-amber-600 text-white ${clsBtn} disabled:opacity-50`}>{isSubmitting ? 'Сохранение...' : 'Сохранить'}</button>
+                      <button type="button" onClick={handleOpenSendModal} disabled={isSubmitting || allSavedItems.length === 0} className={`border border-amber-600 text-amber-700 ${clsBtn} disabled:opacity-50`}>Разослать</button>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* ---- Модальное окно создания контрагента ---- */}
+              {showCpCreateModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-xl shadow-xl p-6 space-y-4 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <h3 className="text-xl font-semibold">Новый контрагент</h3>
+                    
+                    {/* Поиск по DaData */}
                     <div className="relative">
-                      <label className="text-xs text-gray-600">Юридический адрес*</label>
+                      <label className="text-xs text-gray-600">Поиск организации для автоматического заполнения</label>
                       <input
-                        className={cpFormErrors.legal_address ? clsInputError : clsInput}
-                        placeholder="Начните вводить юр. адрес..."
-                        value={newCpForm.legal_address || ''}
-                        onFocus={() => { setCpAddrFocus(true); setCpAddrQuery(newCpForm.legal_address || ''); }}
-                        onBlur={() => setTimeout(() => setCpAddrFocus(false), 150)}
-                        onChange={e => {
-                          handleCpFormChange('legal_address', e.target.value);
-                          setCpAddrQuery(e.target.value);
-                        }}
+                        className={clsInput}
+                        placeholder="Введите ИНН, ОГРН или название организации для автозаполнения"
+                        value={cpDadataQuery}
+                        onChange={e => setCpDadataQuery(e.target.value)}
+                        onFocus={() => setCpDadataFocus(true)}
+                        onBlur={() => setTimeout(() => setCpDadataFocus(false), 200)}
                       />
-                      {cpFormErrors.legal_address && <p className="text-xs text-red-600 mt-1">{cpFormErrors.legal_address}</p>}
-                      {cpAddrFocus && cpAddrSugg.length > 0 && (
-                        <div className="absolute z-30 mt-1 w-full max-h-48 overflow-auto bg-white border border-gray-200 rounded-md shadow-lg">
-                          {cpAddrSugg.map((s, i) => (
-                            <button type="button" key={i} onMouseDown={() => handlePickCpAddress(s.unrestricted_value || s.value)} className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm">
-                              {s.unrestricted_value || s.value}
+                      {cpDadataLoading && <div className="text-xs text-gray-500 mt-1">Поиск...</div>}
+                      {cpDadataFocus && cpDadataSugg.length > 0 && (
+                        <div className="absolute z-40 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow-lg">
+                          {cpDadataSugg.map((p, i) => (
+                            <button type="button" key={i} onMouseDown={() => handlePickDadataParty(p)} className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm">
+                              <div className="font-semibold">{p.short_name || p.value}</div>
+                              <div className="text-xs text-gray-600">ИНН: {p.inn}, {p.legal_address}</div>
                             </button>
                           ))}
                         </div>
                       )}
                     </div>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">ИНН*</label>
-                    <input className={cpFormErrors.inn ? clsInputError : clsInput} placeholder="10 или 12 цифр" value={newCpForm.inn || ''} onChange={e => handleCpFormChange('inn', e.target.value)} />
-                    {cpFormErrors.inn && <p className="text-xs text-red-600 mt-1">{cpFormErrors.inn}</p>}
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">ОГРН*</label>
-                    <input className={cpFormErrors.ogrn ? clsInputError : clsInput} placeholder="13 или 15 цифр" value={newCpForm.ogrn || ''} onChange={e => handleCpFormChange('ogrn', e.target.value)} />
-                    {cpFormErrors.ogrn && <p className="text-xs text-red-600 mt-1">{cpFormErrors.ogrn}</p>}
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">КПП*</label>
-                    <input className={cpFormErrors.kpp ? clsInputError : clsInput} placeholder="9 цифр" value={newCpForm.kpp || ''} onChange={e => handleCpFormChange('kpp', e.target.value)} />
-                    {cpFormErrors.kpp && <p className="text-xs text-red-600 mt-1">{cpFormErrors.kpp}</p>}
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">ОКПО*</label>
-                    <input className={cpFormErrors.okpo ? clsInputError : clsInput} placeholder="8 или 10 цифр" value={newCpForm.okpo || ''} onChange={e => handleCpFormChange('okpo', e.target.value)} />
-                    {cpFormErrors.okpo && <p className="text-xs text-red-600 mt-1">{cpFormErrors.okpo}</p>}
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="text-xs text-gray-600">ОКАТО/ОКТМО*</label>
-                    <input className={cpFormErrors.okato ? clsInputError : clsInput} value={newCpForm.okato || ''} onChange={e => handleCpFormChange('okato', e.target.value)} />
-                    {cpFormErrors.okato && <p className="text-xs text-red-600 mt-1">{cpFormErrors.okato}</p>}
-                  </div>
-                </div>
 
-                {/* Банк */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
-                  <h4 className="md:col-span-3 text-md font-semibold text-gray-800">Банковские реквизиты</h4>
-                  <div>
-                    <label className="text-xs text-gray-600">Расчётный счёт</label>
-                    <input className={cpFormErrors.bank_account ? clsInputError : clsInput} placeholder="20 цифр" value={newCpForm.bank_account || ''} onChange={e => handleCpFormChange('bank_account', e.target.value)} />
-                    {cpFormErrors.bank_account && <p className="text-xs text-red-600 mt-1">{cpFormErrors.bank_account}</p>}
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">БИК банка</label>
-                    <input className={cpFormErrors.bank_bik ? clsInputError : clsInput} placeholder="9 цифр" value={newCpForm.bank_bik || ''} onChange={e => handleCpFormChange('bank_bik', e.target.value)} />
-                    {cpFormErrors.bank_bik && <p className="text-xs text-red-600 mt-1">{cpFormErrors.bank_bik}</p>}
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">Наименование банка</label>
-                    <input className={cpFormErrors.bank_name ? clsInputError : clsInput} placeholder="ПАО Сбербанк" value={newCpForm.bank_name || ''} onChange={e => handleCpFormChange('bank_name', e.target.value)} />
-                    {cpFormErrors.bank_name && <p className="text-xs text-red-600 mt-1">{cpFormErrors.bank_name}</p>}
-                  </div>
-                  <div className="md:col-span-3">
-                    <label className="text-xs text-gray-600">Корр. счёт</label>
-                    <input className={cpFormErrors.bank_corr ? clsInputError : clsInput} placeholder="20 цифр" value={newCpForm.bank_corr || ''} onChange={e => handleCpFormChange('bank_corr', e.target.value)} />
-                    {cpFormErrors.bank_corr && <p className="text-xs text-red-600 mt-1">{cpFormErrors.bank_corr}</p>}
-                  </div>
-                </div>
-
-                {/* Контактная информация */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
-                  <h4 className="md:col-span-3 text-md font-semibold text-gray-800">Контактная информация</h4>
-                  <div>
-                    <label className="text-xs text-gray-600">ФИО директора*</label>
-                    <input className={cpFormErrors.director ? clsInputError : clsInput} placeholder="Иванов И.И." value={newCpForm.director || ''} onChange={e => handleCpFormChange('director', e.target.value)} />
-                    {cpFormErrors.director && <p className="text-xs text-red-600 mt-1">{cpFormErrors.director}</p>}
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">Телефон*</label>
-                    <input className={cpFormErrors.phone ? clsInputError : clsInput} placeholder="+7 (999) 999-99-99" value={newCpForm.phone || ''} onChange={e => handleCpFormChange('phone', e)} />
-                    {cpFormErrors.phone && <p className="text-xs text-red-600 mt-1">{cpFormErrors.phone}</p>}
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">E-mail*</label>
-                    <input className={cpFormErrors.email ? clsInputError : clsInput} placeholder="contact@company.ru" value={newCpForm.email || ''} onChange={e => handleCpFormChange('email', e.target.value)} />
-                    {cpFormErrors.email && <p className="text-xs text-red-600 mt-1">{cpFormErrors.email}</p>}
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-4 border-t">
-                  <button onClick={handleCreateCounterparty} className="px-4 py-2 bg-emerald-600 text-white rounded-md">
-                    Сохранить контрагента
-                  </button>
-                  <button onClick={() => {
-                    setShowCpCreateModal(false);
-                    setNewCpForm({});
-                    setCpFormErrors({});
-                  }} className="px-4 py-2 border border-gray-300 rounded-md">
-                    Отмена
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ---- Модальное окно подтверждения рассылки ---- */}
-          {showSendModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-xl shadow-xl p-6 space-y-4 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-                <h3 className="text-xl font-semibold">Подтверждение рассылки</h3>
-                <p>Выберите, какие категории рассылать, и укажите поставщика для каждой категории.</p>
-
-                {/* Список категорий с чекбоксами и селектом поставщика */}
-                <div className="space-y-3">
-                  {cats.filter(c => c.saved.length > 0).map(cat => {
-                    const enabled = !!sendCategoryEnabled[cat.id];
-                    const emailEntries = emailGroupsConfig[cat.id] || [];
-                    const options = suppliers;
-
-                    return (
-                      <div key={cat.id} className="flex items-start gap-3 p-3 border rounded-md">
-                        <div className="pt-1">
-                          <input type="checkbox" checked={enabled} onChange={() => setSendCategoryEnabled(prev => ({ ...prev, [cat.id]: !enabled }))} />
+                    {/* Основное */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
+                      <h4 className="md:col-span-3 text-md font-semibold text-gray-800">Основные реквизиты</h4>
+                      <div>
+                        <label className="text-xs text-gray-600">Краткое наименование*</label>
+                        <input className={cpFormErrors.short_name ? clsInputError : clsInput} placeholder="ООО Ромашка" value={newCpForm.short_name || ''} onChange={e => handleCpFormChange('short_name', e.target.value)} />
+                        {cpFormErrors.short_name && <p className="text-xs text-red-600 mt-1">{cpFormErrors.short_name}</p>}
+                      </div>
+                      <div className="md:col-span-2">
+                        <div className="relative">
+                          <label className="text-xs text-gray-600">Юридический адрес*</label>
+                          <input
+                            className={cpFormErrors.legal_address ? clsInputError : clsInput}
+                            placeholder="Начните вводить юр. адрес..."
+                            value={newCpForm.legal_address || ''}
+                            onFocus={() => { setCpAddrFocus(true); setCpAddrQuery(newCpForm.legal_address || ''); }}
+                            onBlur={() => setTimeout(() => setCpAddrFocus(false), 150)}
+                            onChange={e => {
+                              handleCpFormChange('legal_address', e.target.value);
+                              setCpAddrQuery(e.target.value);
+                            }}
+                          />
+                          {cpFormErrors.legal_address && <p className="text-xs text-red-600 mt-1">{cpFormErrors.legal_address}</p>}
+                          {cpAddrFocus && cpAddrSugg.length > 0 && (
+                            <div className="absolute z-30 mt-1 w-full max-h-48 overflow-auto bg-white border border-gray-200 rounded-md shadow-lg">
+                              {cpAddrSugg.map((s, i) => (
+                                <button type="button" key={i} onMouseDown={() => handlePickCpAddress(s.unrestricted_value || s.value)} className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm">
+                                  {s.unrestricted_value || s.value}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <div className="flex-1 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div className="font-medium">{cat.title}</div>
-                            <div className="text-sm text-gray-500">{cat.saved.length} позиций</div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">ИНН*</label>
+                        <input className={cpFormErrors.inn ? clsInputError : clsInput} placeholder="10 или 12 цифр" value={newCpForm.inn || ''} onChange={e => handleCpFormChange('inn', e.target.value)} />
+                        {cpFormErrors.inn && <p className="text-xs text-red-600 mt-1">{cpFormErrors.inn}</p>}
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">ОГРН*</label>
+                        <input className={cpFormErrors.ogrn ? clsInputError : clsInput} placeholder="13 или 15 цифр" value={newCpForm.ogrn || ''} onChange={e => handleCpFormChange('ogrn', e.target.value)} />
+                        {cpFormErrors.ogrn && <p className="text-xs text-red-600 mt-1">{cpFormErrors.ogrn}</p>}
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">КПП*</label>
+                        <input className={cpFormErrors.kpp ? clsInputError : clsInput} placeholder="9 цифр" value={newCpForm.kpp || ''} onChange={e => handleCpFormChange('kpp', e.target.value)} />
+                        {cpFormErrors.kpp && <p className="text-xs text-red-600 mt-1">{cpFormErrors.kpp}</p>}
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">ОКПО*</label>
+                        <input className={cpFormErrors.okpo ? clsInputError : clsInput} placeholder="8 или 10 цифр" value={newCpForm.okpo || ''} onChange={e => handleCpFormChange('okpo', e.target.value)} />
+                        {cpFormErrors.okpo && <p className="text-xs text-red-600 mt-1">{cpFormErrors.okpo}</p>}
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="text-xs text-gray-600">ОКАТО/ОКТМО*</label>
+                        <input className={cpFormErrors.okato ? clsInputError : clsInput} value={newCpForm.okato || ''} onChange={e => handleCpFormChange('okato', e.target.value)} />
+                        {cpFormErrors.okato && <p className="text-xs text-red-600 mt-1">{cpFormErrors.okato}</p>}
+                      </div>
+                    </div>
+
+                    {/* Банк */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
+                      <h4 className="md:col-span-3 text-md font-semibold text-gray-800">Банковские реквизиты</h4>
+                      <div>
+                        <label className="text-xs text-gray-600">Расчётный счёт</label>
+                        <input className={cpFormErrors.bank_account ? clsInputError : clsInput} placeholder="20 цифр" value={newCpForm.bank_account || ''} onChange={e => handleCpFormChange('bank_account', e.target.value)} />
+                        {cpFormErrors.bank_account && <p className="text-xs text-red-600 mt-1">{cpFormErrors.bank_account}</p>}
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">БИК банка</label>
+                        <input className={cpFormErrors.bank_bik ? clsInputError : clsInput} placeholder="9 цифр" value={newCpForm.bank_bik || ''} onChange={e => handleCpFormChange('bank_bik', e.target.value)} />
+                        {cpFormErrors.bank_bik && <p className="text-xs text-red-600 mt-1">{cpFormErrors.bank_bik}</p>}
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">Наименование банка</label>
+                        <input className={cpFormErrors.bank_name ? clsInputError : clsInput} placeholder="ПАО Сбербанк" value={newCpForm.bank_name || ''} onChange={e => handleCpFormChange('bank_name', e.target.value)} />
+                        {cpFormErrors.bank_name && <p className="text-xs text-red-600 mt-1">{cpFormErrors.bank_name}</p>}
+                      </div>
+                      <div className="md:col-span-3">
+                        <label className="text-xs text-gray-600">Корр. счёт</label>
+                        <input className={cpFormErrors.bank_corr ? clsInputError : clsInput} placeholder="20 цифр" value={newCpForm.bank_corr || ''} onChange={e => handleCpFormChange('bank_corr', e.target.value)} />
+                        {cpFormErrors.bank_corr && <p className="text-xs text-red-600 mt-1">{cpFormErrors.bank_corr}</p>}
+                      </div>
+                    </div>
+
+                    {/* Контактная информация */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
+                      <h4 className="md:col-span-3 text-md font-semibold text-gray-800">Контактная информация</h4>
+                      <div>
+                        <label className="text-xs text-gray-600">ФИО директора*</label>
+                        <input className={cpFormErrors.director ? clsInputError : clsInput} placeholder="Иванов И.И." value={newCpForm.director || ''} onChange={e => handleCpFormChange('director', e.target.value)} />
+                        {cpFormErrors.director && <p className="text-xs text-red-600 mt-1">{cpFormErrors.director}</p>}
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">Телефон*</label>
+                        <input className={cpFormErrors.phone ? clsInputError : clsInput} placeholder="+7 (999) 999-99-99" value={newCpForm.phone || ''} onChange={e => handleCpFormChange('phone', e)} />
+                        {cpFormErrors.phone && <p className="text-xs text-red-600 mt-1">{cpFormErrors.phone}</p>}
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">E-mail*</label>
+                        <input className={cpFormErrors.email ? clsInputError : clsInput} placeholder="contact@company.ru" value={newCpForm.email || ''} onChange={e => handleCpFormChange('email', e.target.value)} />
+                        {cpFormErrors.email && <p className="text-xs text-red-600 mt-1">{cpFormErrors.email}</p>}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 pt-4 border-t">
+                      <button onClick={handleCreateCounterparty} className="px-4 py-2 bg-emerald-600 text-white rounded-md">
+                        Сохранить контрагента
+                      </button>
+                      <button onClick={() => {
+                        setShowCpCreateModal(false);
+                        setNewCpForm({});
+                        setCpFormErrors({});
+                      }} className="px-4 py-2 border border-gray-300 rounded-md">
+                        Отмена
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ---- Модальное окно подтверждения рассылки ---- */}
+              {showSendModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-xl shadow-xl p-6 space-y-4 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <h3 className="text-xl font-semibold">Подтверждение рассылки</h3>
+                    <p>Выберите, какие категории рассылать, и укажите поставщика для каждой категории.</p>
+
+                    {/* Список категорий с чекбоксами и селектом поставщика */}
+                    <div className="space-y-3">
+                      {cats.filter(c => c.saved.length > 0).map(cat => {
+                        const enabled = !!sendCategoryEnabled[cat.id];
+                        const emailEntries = emailGroupsConfig[cat.id] || [];
+                        const options = suppliers;
+
+                        return (
+                          <div key={cat.id} className="flex items-start gap-3 p-3 border rounded-md">
+                            <div className="pt-1">
+                              <input type="checkbox" checked={enabled} onChange={() => setSendCategoryEnabled(prev => ({ ...prev, [cat.id]: !enabled }))} />
+                            </div>
+                            <div className="flex-1 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="font-medium">{cat.title}</div>
+                                <div className="text-sm text-gray-500">{cat.saved.length} позиций</div>
+                              </div>
+                              {emailEntries.map((entry, index) => (
+                                <div key={entry.id} className={`p-3 rounded-md ${index > 0 ? 'mt-2' : ''} bg-gray-50`}>
+                                  {/* Для первой строки показываем выбор поставщика */}
+                                  {index === 0 && (
+                                    <div className="mb-3">
+                                      <label className="text-xs text-gray-600">Поставщик (необязательно)</label>
+                                      <select
+                                        className={clsInput}
+                                        value={entry.supplierId ?? ''}
+                                        onChange={(e) => {
+                                          const supplierId = e.target.value ? Number(e.target.value) : null;
+                                          const supplier = options.find(s => s.id === supplierId);
+                                          updateEmailEntry(cat.id, entry.id, 'supplierId', supplierId);
+                                          updateEmailEntry(cat.id, entry.id, 'email', supplier?.email || '');
+                                        }}
+                                        disabled={!enabled}
+                                      >
+                                        <option value="">Выбрать из списка моих поставщиков...</option>
+                                        {options.map(s => (
+                                          <option key={s.id} value={s.id}>{s.short_name}{s.inn ? ` (ИНН: ${s.inn})` : ''}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  )}
+
+                                  {/* Компактная строка для email и позиций */}
+                                  <div className="flex flex-wrap items-end gap-3">
+                                    <div className="flex-grow min-w-[250px]">
+                                      <label className="text-xs text-gray-600">
+                                        {index === 0 ? 'E-mail поставщика или вручную' : 'Дополнительный E-mail'}
+                                      </label>
+                                      <input
+                                        className={clsInput}
+                                        placeholder="contact@company.ru"
+                                        value={entry.email}
+                                        onChange={(e) => {
+                                          updateEmailEntry(cat.id, entry.id, 'email', e.target.value);
+                                        }}
+                                        disabled={!enabled}
+                                      />
+                                    </div>
+                                    <div className="flex-shrink-0 w-full sm:w-auto">
+                                      <label className="text-xs text-gray-600">Позиции</label>
+                                      <ItemSelectionDropdown
+                                        items={cat.saved}
+                                        selectedIds={entry.selectedItemIds}
+                                        onSelectionChange={(ids) => updateEmailEntry(cat.id, entry.id, 'selectedItemIds', ids)}
+                                        catKind={cat.kind}
+                                        disabled={!enabled}
+                                      />
+                                    </div>
+                                    {emailEntries.length > 1 ? (
+                                       <button
+                                          type="button"
+                                          onClick={() => removeEmailEntry(cat.id, entry.id)}
+                                          className="px-3 py-2 text-red-600 hover:text-red-800 disabled:text-gray-400 self-end"
+                                          title="Удалить получателя"
+                                          disabled={!enabled}
+                                        >
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
+                                          </svg>
+                                        </button>
+                                    ) : <div className="w-11"/> }
+                                  </div>
+                                </div>
+                              ))}
+                              <button type="button" onClick={() => addEmailEntry(cat.id)} className="text-sm text-emerald-600 hover:text-emerald-700" disabled={!enabled}>+ Добавить еще email</button>
+                            </div>
                           </div>
-                          {emailEntries.map((entry, index) => (
-                            <div key={entry.id} className={`p-3 rounded-md ${index > 0 ? 'mt-2' : ''} bg-gray-50`}>
-                              {/* Для первой строки показываем выбор поставщика */}
-                              {index === 0 && (
-                                <div className="mb-3">
-                                  <label className="text-xs text-gray-600">Поставщик (необязательно)</label>
-                                  <select
-                                    className={clsInput}
-                                    value={entry.supplierId ?? ''}
-                                    onChange={(e) => {
-                                      const supplierId = e.target.value ? Number(e.target.value) : null;
-                                      const supplier = options.find(s => s.id === supplierId);
-                                      updateEmailEntry(cat.id, entry.id, 'supplierId', supplierId);
-                                      updateEmailEntry(cat.id, entry.id, 'email', supplier?.email || '');
-                                    }}
-                                    disabled={!enabled}
-                                  >
-                                    <option value="">Выбрать из списка моих поставщиков...</option>
-                                    {options.map(s => (
-                                      <option key={s.id} value={s.id}>{s.short_name}{s.inn ? ` (ИНН: ${s.inn})` : ''}</option>
-                                    ))}
+                        );
+                      })}
+                    </div>
+
+                    {/* Preview сообщения */}
+                    <div className="border-t pt-4 space-y-4">
+                      <h4 className="font-semibold">Предпросмотр писем</h4>
+                      {emailPreviews.map((preview, index) => (
+                        <div key={index} className="border p-3 rounded-md space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">
+                            Получатель: <span className="font-normal text-gray-900">{preview.recipients}</span>
+                          </label>
+                          
+                          <div>
+                            <label className="text-xs text-gray-600">Шапка письма</label>
+                            <textarea
+                              className="w-full mt-1 p-2 border border-gray-300 rounded-md text-sm focus:ring-amber-500 focus:border-amber-500"
+                              rows={4}
+                              value={preview.header}
+                              onChange={(e) => handlePreviewChange(index, 'header', e.target.value)}
+                            />
+                          </div>
+
+                          <div className="p-3 border rounded-md bg-gray-50/70">
+                            <p className="text-xs text-gray-600 mb-2">Позиции заявки (нередактируемые)</p>
+                            <div className="max-h-48 overflow-y-auto text-xs">
+                              <PreviewItemsTable items={preview.items} />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-xs text-gray-600">Подвал письма</label>
+                            <textarea
+                              className="w-full mt-1 p-2 border border-gray-300 rounded-md text-sm focus:ring-amber-500 focus:border-amber-500"
+                              rows={4}
+                              value={preview.footer}
+                              onChange={(e) => handlePreviewChange(index, 'footer', e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      {emailPreviews.length === 0 && (
+                        <p className="text-sm text-gray-500">Нет выбранных категорий или получателей для отправки.</p>
+                      )}
+                    </div>
+
+                    <div className="flex gap-3 pt-4 border-t">
+                      <button onClick={sendRequest} disabled={isSubmitting || emailPreviews.length === 0} className="px-4 py-2 bg-emerald-600 text-white rounded-md disabled:opacity-50">
+                        {isSubmitting ? 'Отправка...' : 'Отправить'}
+                      </button>
+                      <button onClick={() => setShowSendModal(false)} disabled={isSubmitting} className="px-4 py-2 border border-gray-300 rounded-md disabled:opacity-50">
+                        Отмена
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ---- Категории и позиции ---- */}
+              {isLoading ? (
+                // --- Скелетон для блока категорий ---
+                <div className="bg-white rounded-xl shadow p-5 space-y-4">
+                  <SkeletonLoader className="h-8 w-64" />
+                  <SkeletonLoader className="h-40 w-full" />
+                  <SkeletonLoader className="h-10 w-40" />
+                </div>
+              ) : (cats.map(cat => (
+                <div key={cat.id} className="bg-white rounded-xl shadow p-5 space-y-4">
+                  {/* Заголовок категории: сначала ввод, потом жирный текст + кнопка Изменить */}
+                  {cat.editingTitle ? (
+                    <div className="flex items-center gap-3">
+                      <div className="relative w-80">
+                        <input
+                          className="px-2 py-1 border border-gray-300 rounded-md text-sm w-full"
+                          value={cat.title}
+                          placeholder="Категория (например, Металлопрокат)"
+                          onFocus={()=> setCatFocus(p=>({ ...p, [cat.id]: true }))}
+                          onBlur={()=> setTimeout(()=> setCatFocus(p=>({ ...p, [cat.id]: false })), 120)}
+                          onChange={(e)=> setCats(cs => cs.map(c => c.id===cat.id ? { ...c, title: e.target.value } : c))}
+                          onKeyDown={(e)=>{ if (e.key === 'Enter') finalizeCategoryTitle(cat.id, cat.title); }}
+                        />
+                        {catFocus[cat.id] && (
+                          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow">
+                            <button
+                              type="button"
+                              onMouseDown={()=> finalizeCategoryTitle(cat.id, 'Металлопрокат')}
+                              className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm"
+                            >
+                              Металлопрокат
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <button className="px-3 py-1 bg-emerald-600 text-white rounded-md text-sm" onClick={()=>finalizeCategoryTitle(cat.id, cat.title)}>
+                        Применить
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <div className="text-lg font-semibold">
+                        {cat.title?.trim() || (cat.kind === 'metal' ? 'Металлопрокат' : 'Новая категория')}
+                      </div>
+                      <button className="px-3 py-1 border border-gray-300 rounded-md text-sm" onClick={()=>reopenCategoryTitle(cat.id)}>
+                        Изменить
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Пока категория не задана — никаких полей ниже */}
+                  {!cat.editingTitle && (
+                    <>
+                      {/* Если есть сохранённые позиции — показываем таблицу */}
+                      {cat.saved.length > 0 && (
+                        <div className="space-y-2">
+                          {cat.kind === 'metal' ? (
+                            <table className="w-full table-auto border-separate border-spacing-0">
+                              <thead>
+                                <tr className="bg-gray-50">
+                                  <th className={th}>Категория</th>
+                                  <th className={th}>Размер</th>
+                                  <th className={th}>ГОСТ</th>
+                                  <th className={th}>Марка</th>
+                                  <th className={th}>Аналоги</th>
+                                  <th className={th}>Количество</th>
+                                  <th className={th}>Ед. изм.</th>
+                                  <th className={th}>Комментарий</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {cat.saved.map((s, i) => {
+                                  if (s.kind !== 'metal') return null;
+                                  const m = s as SavedMetalItem;
+                                  return (
+                                    <tr key={i} className="border-t">
+                                      <td className={td}>{m.category || '—'}</td>
+                                      <td className={td}>{m.size || '—'}</td>
+                                      <td className={td}>{m.state_standard || '—'}</td>
+                                      <td className={td}>{m.stamp || '—'}</td>
+                                      <td className={td}>{m.allow_analogs ? 'Да' : 'Нет'}</td>
+                                      <td className={td}>{m.quantity ?? '—'}</td>
+                                      <td className={td}>{m.unit || 'шт.'}</td>
+                                      <td className={td}>{m.comment || '—'}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          ) : (
+                            <table className="w-full table-auto border-separate border-spacing-0">
+                              <thead>
+                                <tr className="bg-gray-50">
+                                  <th className={th}>Наименование</th>
+                                  <th className={th}>Размеры/характеристики</th>
+                                  <th className={th}>Аналоги</th>
+                                  <th className={th}>Ед. изм.</th>
+                                  <th className={th}>Количество</th>
+                                  <th className={th}>Комментарий</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {cat.saved.map((s, i) => {
+                                  if (s.kind !== 'generic') return null;
+                                  const g = s as SavedGenericItem;
+                                  return (
+                                    <tr key={i} className="border-t">
+                                      <td className={td}>{g.name}</td>
+                                      <td className={td}>{g.dims || '—'}</td>
+                                      <td className={td}>{g.allow_analogs ? 'Да' : 'Нет'}</td>
+                                      <td className={td}>{g.unit || '—'}</td>
+                                      <td className={td}>{g.quantity ?? '—'}</td>
+                                      <td className={td}>{g.comment || '—'}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Несохранённые редакторы позиций (кнопки под позицией) */}
+                      {cat.editors.map(row => (
+                        <div key={row._id} className="rounded-lg border border-gray-200 p-4">
+                          {cat.kind === 'metal' ? (
+                            <>
+                              <div className="grid grid-cols-1 md:grid-cols-7 gap-3 items-start">
+                                <div>
+                                  <div className="text-xs text-gray-600 mb-1">Категория</div>
+                                  <select className={clsInput}
+                                    value={(row as MetalRow).mCategory || ''}
+                                    onChange={(e)=>setCell(cat.id, row._id, 'mCategory', e.target.value)}>
+                                    <option value="">—</option>
+                                    {opts.categories.map(c => <option key={c} value={c}>{c}</option>)}
                                   </select>
                                 </div>
-                              )}
-
-                              {/* Компактная строка для email и позиций */}
-                              <div className="flex flex-wrap items-end gap-3">
-                                <div className="flex-grow min-w-[250px]">
-                                  <label className="text-xs text-gray-600">
-                                    {index === 0 ? 'E-mail поставщика или вручную' : 'Дополнительный E-mail'}
-                                  </label>
-                                  <input
-                                    className={clsInput}
-                                    placeholder="contact@company.ru"
-                                    value={entry.email}
-                                    onChange={(e) => {
-                                      updateEmailEntry(cat.id, entry.id, 'email', e.target.value);
-                                    }}
-                                    disabled={!enabled}
-                                  />
+                                <div>
+                                  <div className="text-xs text-gray-600 mb-1">Размер (1×1×1)</div>
+                                  <input className={clsInput} placeholder="1x1x1"
+                                    value={(row as MetalRow).size || ''}
+                                    onChange={(e)=>setCell(cat.id, row._id, 'size', e.target.value.replace(/ /g, 'x'))} />
                                 </div>
-                                <div className="flex-shrink-0 w-full sm:w-auto">
-                                  <label className="text-xs text-gray-600">Позиции</label>
-                                  <ItemSelectionDropdown
-                                    items={cat.saved}
-                                    selectedIds={entry.selectedItemIds}
-                                    onSelectionChange={(ids) => updateEmailEntry(cat.id, entry.id, 'selectedItemIds', ids)}
-                                    catKind={cat.kind}
-                                    disabled={!enabled}
-                                  />
+                                <div>
+                                  <div className="text-xs text-gray-600 mb-1">ГОСТ</div>
+                                  <select className={clsInput}
+                                    value={(row as MetalRow).gost || ''}
+                                    onChange={(e)=>setCell(cat.id, row._id, 'gost', e.target.value)}>
+                                    <option value="">—</option>
+                                    {opts.standards.map(s => <option key={s} value={s}>{s}</option>)}
+                                  </select>
                                 </div>
-                                {emailEntries.length > 1 ? (
-                                   <button
-                                      type="button"
-                                      onClick={() => removeEmailEntry(cat.id, entry.id)}
-                                      className="px-3 py-2 text-red-600 hover:text-red-800 disabled:text-gray-400 self-end"
-                                      title="Удалить получателя"
-                                      disabled={!enabled}
-                                    >
-                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
-                                      </svg>
-                                    </button>
-                                ) : <div className="w-11"/> }
+                                <div>
+                                  <div className="text-xs text-gray-600 mb-1">Марка</div>
+                                  <select className={clsInput}
+                                    value={(row as MetalRow).grade || ''}
+                                    onChange={(e)=>setCell(cat.id, row._id, 'grade', e.target.value)}>
+                                    <option value="">—</option>
+                                    {opts.grades.map(s => <option key={s} value={s}>{s}</option>)}
+                                  </select>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-gray-600 mb-1">Аналоги</div>
+                                  <select className={clsInput}
+                                    value={(row as MetalRow).allowAnalogs ? 'Да' : 'Нет'}
+                                    onChange={(e)=>setCell(cat.id, row._id,'allowAnalogs', e.target.value === 'Да')}> 
+                                    <option>Нет</option>
+                                    <option>Да</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-gray-600 mb-1">Количество</div>
+                                  <input className={clsInput} type="number" min="0" step="any"
+                                    value={(row as MetalRow).qty || ''}
+                                    onChange={(e)=>setCell(cat.id, row._id, 'qty', e.target.value)} />
+                                </div>
+                                <div>
+                                  <div className="text-xs text-gray-600 mb-1">Ед. изм.</div>
+                                  <select className={clsInput} value={(row as MetalRow).unit || ''} onChange={(e) => setCell(cat.id, row._id, 'unit', e.target.value)}>
+                                    <option value="">—</option>
+                                    {units.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                                  </select>
+                                </div>
+                              </div>
+                              <div className="mt-3">
+                                <div className="text-xs text-gray-600 mb-1">Комментарий</div>
+                                <input className={clsInput}
+                                  value={(row as MetalRow).comment || ''}
+                                  onChange={(e)=>setCell(cat.id, row._id, 'comment', e.target.value)} />
+                              </div>
+                            </>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                              <div className="md:col-span-2">
+                                <div className="text-xs text-gray-600 mb-1">Наименование товаров / работ / услуг</div>
+                                <input className={clsInput}
+                                  value={(row as GenericRow).name || ''}
+                                  onChange={(e)=>setCell(cat.id, row._id, 'name', e.target.value)} />
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-600 mb-1">Размеры, характеристики</div>
+                                <input className={clsInput}
+                                  value={(row as GenericRow).dims || ''}
+                                  onChange={(e)=>setCell(cat.id, row._id, 'dims', e.target.value)} />
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-600 mb-1">Аналоги</div>
+                                <select className={clsInput}
+                                  value={(row as GenericRow).allowAnalogs ? 'Да' : 'Нет'}
+                                  onChange={(e)=>setCell(cat.id, row._id,'allowAnalogs', e.target.value === 'Да')}>
+                                  <option>Нет</option>
+                                  <option>Да</option>
+                                </select>
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-600 mb-1">Ед. изм.</div>
+                                <select className={clsInput} value={(row as GenericRow).unit || ''} onChange={(e) => setCell(cat.id, row._id, 'unit', e.target.value)}>
+                                  <option value="">—</option>
+                                  {units.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                                </select>
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-600 mb-1">Количество</div>
+                                <input className={clsInput} type="number" min="0" step="any"
+                                  value={(row as GenericRow).qty || ''}
+                                  onChange={(e)=>setCell(cat.id, row._id, 'qty', e.target.value)} />
+                              </div>
+                              <div className="md:col-span-6">
+                                <div className="text-xs text-gray-600 mb-1">Комментарий</div>
+                                <input className={clsInput}
+                                  value={(row as GenericRow).comment || ''}
+                                  onChange={(e)=>setCell(cat.id, row._id, 'comment', e.target.value)} />
                               </div>
                             </div>
-                          ))}
-                          <button type="button" onClick={() => addEmailEntry(cat.id)} className="text-sm text-emerald-600 hover:text-emerald-700" disabled={!enabled}>+ Добавить еще email</button>
+                          )}
+
+                          {/* Кнопки под позицией */}
+                          <div className="mt-3 flex flex-wrap gap-3">
+                            <button onClick={()=>savePosition(cat.id, row._id)} className="px-4 py-2 bg-emerald-600 text-white rounded-md">Сохранить</button>
+                            <button onClick={()=>removeEditorRow(cat.id, row._id)} className="px-4 py-2 border border-gray-300 rounded-md">Удалить</button>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      ))}
 
-                {/* Preview сообщения */}
-                <div className="border-t pt-4 space-y-4">
-                  <h4 className="font-semibold">Предпросмотр писем</h4>
-                  {emailPreviews.map((preview, index) => (
-                    <div key={index} className="border p-3 rounded-md space-y-2">
-                      <label className="block text-sm font-medium text-gray-700">
-                        Получатель: <span className="font-normal text-gray-900">{preview.recipients}</span>
-                      </label>
-                      
+                      {/* Кнопка добавить позицию — снизу блока категории */}
                       <div>
-                        <label className="text-xs text-gray-600">Шапка письма</label>
-                        <textarea
-                          className="w-full mt-1 p-2 border border-gray-300 rounded-md text-sm focus:ring-amber-500 focus:border-amber-500"
-                          rows={4}
-                          value={preview.header}
-                          onChange={(e) => handlePreviewChange(index, 'header', e.target.value)}
-                        />
-                      </div>
-
-                      <div className="p-3 border rounded-md bg-gray-50/70">
-                        <p className="text-xs text-gray-600 mb-2">Позиции заявки (нередактируемые)</p>
-                        <div className="max-h-48 overflow-y-auto text-xs">
-                          <PreviewItemsTable items={preview.items} />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="text-xs text-gray-600">Подвал письма</label>
-                        <textarea
-                          className="w-full mt-1 p-2 border border-gray-300 rounded-md text-sm focus:ring-amber-500 focus:border-amber-500"
-                          rows={4}
-                          value={preview.footer}
-                          onChange={(e) => handlePreviewChange(index, 'footer', e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                  {emailPreviews.length === 0 && (
-                    <p className="text-sm text-gray-500">Нет выбранных категорий или получателей для отправки.</p>
-                  )}
-                </div>
-
-                <div className="flex gap-3 pt-4 border-t">
-                  <button onClick={sendRequest} disabled={isSubmitting || emailPreviews.length === 0} className="px-4 py-2 bg-emerald-600 text-white rounded-md disabled:opacity-50">
-                    {isSubmitting ? 'Отправка...' : 'Отправить'}
-                  </button>
-                  <button onClick={() => setShowSendModal(false)} disabled={isSubmitting} className="px-4 py-2 border border-gray-300 rounded-md disabled:opacity-50">
-                    Отмена
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ---- Категории и позиции ---- */}
-          {isLoading ? (
-            // --- Скелетон для блока категорий ---
-            <div className="bg-white rounded-xl shadow p-5 space-y-4">
-              <SkeletonLoader className="h-8 w-64" />
-              <SkeletonLoader className="h-40 w-full" />
-              <SkeletonLoader className="h-10 w-40" />
-            </div>
-          ) : (cats.map(cat => (
-            <div key={cat.id} className="bg-white rounded-xl shadow p-5 space-y-4">
-              {/* Заголовок категории: сначала ввод, потом жирный текст + кнопка Изменить */}
-              {cat.editingTitle ? (
-                <div className="flex items-center gap-3">
-                  <div className="relative w-80">
-                    <input
-                      className="px-2 py-1 border border-gray-300 rounded-md text-sm w-full"
-                      value={cat.title}
-                      placeholder="Категория (например, Металлопрокат)"
-                      onFocus={()=> setCatFocus(p=>({ ...p, [cat.id]: true }))}
-                      onBlur={()=> setTimeout(()=> setCatFocus(p=>({ ...p, [cat.id]: false })), 120)}
-                      onChange={(e)=> setCats(cs => cs.map(c => c.id===cat.id ? { ...c, title: e.target.value } : c))}
-                      onKeyDown={(e)=>{ if (e.key === 'Enter') finalizeCategoryTitle(cat.id, cat.title); }}
-                    />
-                    {catFocus[cat.id] && (
-                      <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow">
-                        <button
-                          type="button"
-                          onMouseDown={()=> finalizeCategoryTitle(cat.id, 'Металлопрокат')}
-                          className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm"
-                        >
-                          Металлопрокат
+                        <button onClick={()=>addPosition(cat.id)} className="px-4 py-2 border border-dashed border-gray-300 rounded-md">
+                          + Добавить позицию
                         </button>
                       </div>
-                    )}
-                  </div>
-                  <button className="px-3 py-1 bg-emerald-600 text-white rounded-md text-sm" onClick={()=>finalizeCategoryTitle(cat.id, cat.title)}>
-                    Применить
-                  </button>
+                    </>
+                  )}
+                </div>
+              )))} 
+
+              {/* Кнопка добавить категорию — слева */}
+              {isLoading ? (
+                // --- Скелетон для кнопки "Добавить категорию" ---
+                <div className="flex justify-start">
+                  <SkeletonLoader className="h-14 w-52" />
                 </div>
               ) : (
-                <div className="flex items-center gap-3">
-                  <div className="text-lg font-semibold">
-                    {cat.title?.trim() || (cat.kind === 'metal' ? 'Металлопрокат' : 'Новая категория')}
-                  </div>
-                  <button className="px-3 py-1 border border-gray-300 rounded-md text-sm" onClick={()=>reopenCategoryTitle(cat.id)}>
-                    Изменить
+                // --- Реальная кнопка --- 
+                <div className="flex justify-start">
+                  <button
+                    type="button"
+                    onClick={addCategory}
+                    className="px-5 py-3 border border-dashed border-gray-400 rounded-md text-gray-700 bg-white shadow-sm"
+                  >
+                    + Добавить категорию
                   </button>
                 </div>
               )}
-
-              {/* Пока категория не задана — никаких полей ниже */}
-              {!cat.editingTitle && (
-                <>
-                  {/* Если есть сохранённые позиции — показываем таблицу */}
-                  {cat.saved.length > 0 && (
-                    <div className="space-y-2">
-                      {cat.kind === 'metal' ? (
-                        <table className="w-full table-auto border-separate border-spacing-0">
-                          <thead>
-                            <tr className="bg-gray-50">
-                              <th className={th}>Категория</th>
-                              <th className={th}>Размер</th>
-                              <th className={th}>ГОСТ</th>
-                              <th className={th}>Марка</th>
-                              <th className={th}>Аналоги</th>
-                              <th className={th}>Количество</th>
-                              <th className={th}>Ед. изм.</th>
-                              <th className={th}>Комментарий</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {cat.saved.map((s, i) => {
-                              if (s.kind !== 'metal') return null;
-                              const m = s as SavedMetalItem;
-                              return (
-                                <tr key={i} className="border-t">
-                                  <td className={td}>{m.category || '—'}</td>
-                                  <td className={td}>{m.size || '—'}</td>
-                                  <td className={td}>{m.state_standard || '—'}</td>
-                                  <td className={td}>{m.stamp || '—'}</td>
-                                  <td className={td}>{m.allow_analogs ? 'Да' : 'Нет'}</td>
-                                  <td className={td}>{m.quantity ?? '—'}</td>
-                                  <td className={td}>{m.unit || 'шт.'}</td>
-                                  <td className={td}>{m.comment || '—'}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      ) : (
-                        <table className="w-full table-auto border-separate border-spacing-0">
-                          <thead>
-                            <tr className="bg-gray-50">
-                              <th className={th}>Наименование</th>
-                              <th className={th}>Размеры/характеристики</th>
-                              <th className={th}>Аналоги</th>
-                              <th className={th}>Ед. изм.</th>
-                              <th className={th}>Количество</th>
-                              <th className={th}>Комментарий</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {cat.saved.map((s, i) => {
-                              if (s.kind !== 'generic') return null;
-                              const g = s as SavedGenericItem;
-                              return (
-                                <tr key={i} className="border-t">
-                                  <td className={td}>{g.name}</td>
-                                  <td className={td}>{g.dims || '—'}</td>
-                                  <td className={td}>{g.allow_analogs ? 'Да' : 'Нет'}</td>
-                                  <td className={td}>{g.unit || '—'}</td>
-                                  <td className={td}>{g.quantity ?? '—'}</td>
-                                  <td className={td}>{g.comment || '—'}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Несохранённые редакторы позиций (кнопки под позицией) */}
-                  {cat.editors.map(row => (
-                    <div key={row._id} className="rounded-lg border border-gray-200 p-4">
-                      {cat.kind === 'metal' ? (
-                        <>
-                          <div className="grid grid-cols-1 md:grid-cols-7 gap-3 items-start">
-                            <div>
-                              <div className="text-xs text-gray-600 mb-1">Категория</div>
-                              <select className={clsInput}
-                                value={(row as MetalRow).mCategory || ''}
-                                onChange={(e)=>setCell(cat.id, row._id, 'mCategory', e.target.value)}>
-                                <option value="">—</option>
-                                {opts.categories.map(c => <option key={c} value={c}>{c}</option>)}
-                              </select>
-                            </div>
-                            <div>
-                              <div className="text-xs text-gray-600 mb-1">Размер (1×1×1)</div>
-                              <input className={clsInput} placeholder="1x1x1"
-                                value={(row as MetalRow).size || ''}
-                                onChange={(e)=>setCell(cat.id, row._id, 'size', e.target.value.replace(/ /g, 'x'))} />
-                            </div>
-                            <div>
-                              <div className="text-xs text-gray-600 mb-1">ГОСТ</div>
-                              <select className={clsInput}
-                                value={(row as MetalRow).gost || ''}
-                                onChange={(e)=>setCell(cat.id, row._id, 'gost', e.target.value)}>
-                                <option value="">—</option>
-                                {opts.standards.map(s => <option key={s} value={s}>{s}</option>)}
-                              </select>
-                            </div>
-                            <div>
-                              <div className="text-xs text-gray-600 mb-1">Марка</div>
-                              <select className={clsInput}
-                                value={(row as MetalRow).grade || ''}
-                                onChange={(e)=>setCell(cat.id, row._id, 'grade', e.target.value)}>
-                                <option value="">—</option>
-                                {opts.grades.map(s => <option key={s} value={s}>{s}</option>)}
-                              </select>
-                            </div>
-                            <div>
-                              <div className="text-xs text-gray-600 mb-1">Аналоги</div>
-                              <select className={clsInput}
-                                value={(row as MetalRow).allowAnalogs ? 'Да' : 'Нет'}
-                                onChange={(e)=>setCell(cat.id, row._id,'allowAnalogs', e.target.value === 'Да')}> 
-                                <option>Нет</option>
-                                <option>Да</option>
-                              </select>
-                            </div>
-                            <div>
-                              <div className="text-xs text-gray-600 mb-1">Количество</div>
-                              <input className={clsInput} type="number" min="0" step="any"
-                                value={(row as MetalRow).qty || ''}
-                                onChange={(e)=>setCell(cat.id, row._id, 'qty', e.target.value)} />
-                            </div>
-                            <div>
-                              <div className="text-xs text-gray-600 mb-1">Ед. изм.</div>
-                              <select className={clsInput} value={(row as MetalRow).unit || ''} onChange={(e) => setCell(cat.id, row._id, 'unit', e.target.value)}>
-                                <option value="">—</option>
-                                {units.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
-                              </select>
-                            </div>
-                          </div>
-                          <div className="mt-3">
-                            <div className="text-xs text-gray-600 mb-1">Комментарий</div>
-                            <input className={clsInput}
-                              value={(row as MetalRow).comment || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'comment', e.target.value)} />
-                          </div>
-                        </>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-                          <div className="md:col-span-2">
-                            <div className="text-xs text-gray-600 mb-1">Наименование товаров / работ / услуг</div>
-                            <input className={clsInput}
-                              value={(row as GenericRow).name || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'name', e.target.value)} />
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-600 mb-1">Размеры, характеристики</div>
-                            <input className={clsInput}
-                              value={(row as GenericRow).dims || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'dims', e.target.value)} />
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-600 mb-1">Аналоги</div>
-                            <select className={clsInput}
-                              value={(row as GenericRow).allowAnalogs ? 'Да' : 'Нет'}
-                              onChange={(e)=>setCell(cat.id, row._id,'allowAnalogs', e.target.value === 'Да')}>
-                              <option>Нет</option>
-                              <option>Да</option>
-                            </select>
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-600 mb-1">Ед. изм.</div>
-                            <select className={clsInput} value={(row as GenericRow).unit || ''} onChange={(e) => setCell(cat.id, row._id, 'unit', e.target.value)}>
-                              <option value="">—</option>
-                              {units.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-600 mb-1">Количество</div>
-                            <input className={clsInput} type="number" min="0" step="any"
-                              value={(row as GenericRow).qty || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'qty', e.target.value)} />
-                          </div>
-                          <div className="md:col-span-6">
-                            <div className="text-xs text-gray-600 mb-1">Комментарий</div>
-                            <input className={clsInput}
-                              value={(row as GenericRow).comment || ''}
-                              onChange={(e)=>setCell(cat.id, row._id, 'comment', e.target.value)} />
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Кнопки под позицией */}
-                      <div className="mt-3 flex flex-wrap gap-3">
-                        <button onClick={()=>savePosition(cat.id, row._id)} className="px-4 py-2 bg-emerald-600 text-white rounded-md">Сохранить</button>
-                        <button onClick={()=>removeEditorRow(cat.id, row._id)} className="px-4 py-2 border border-gray-300 rounded-md">Удалить</button>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Кнопка добавить позицию — снизу блока категории */}
-                  <div>
-                    <button onClick={()=>addPosition(cat.id)} className="px-4 py-2 border border-dashed border-gray-300 rounded-md">
-                      + Добавить позицию
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )))} 
-
-          {/* Кнопка добавить категорию — слева */}
-          {isLoading ? (
-            // --- Скелетон для кнопки "Добавить категорию" ---
-            <div className="flex justify-start">
-              <SkeletonLoader className="h-14 w-52" />
-            </div>
-          ) : (
-            // --- Реальная кнопка --- 
-            <div className="flex justify-start">
-              <button
-                type="button"
-                onClick={addCategory}
-                className="px-5 py-3 border border-dashed border-gray-400 rounded-md text-gray-700 bg-white shadow-sm"
-              >
-                + Добавить категорию
-              </button>
             </div>
           )}
+          {activeTab === 'list' && <RequestsList />}
         </div>
       </main>
 

@@ -19,6 +19,7 @@ export interface RegisterFormData {
   password: string;
   email: string;
   role: string;
+  employee_name: string;
 
   // --- поля только для продавца:
   phone_number?: string;   // номер телефона ответственного лица
