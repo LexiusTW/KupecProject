@@ -35,5 +35,4 @@ class User(Base):
 
     delivery_address = Column(String(500), nullable=True)
     email_footer = Column(Text, nullable=True)
-
-    comments = relationship("Comment", back_populates="user")
+    logo_url = Column(String, nullable=True)
