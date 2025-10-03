@@ -11,6 +11,11 @@ from app.schemas.user import UserChangePassword
 
 router = APIRouter()
 
+class ProfilePayload(BaseModel):
+    delivery_address: Optional[str] = None
+    email_footer: Optional[str] = None
+    logo_url: Optional[str] = None
+
 class MeOut(BaseModel):
     id: int
     login: str
@@ -145,3 +150,26 @@ async def change_password(
     await db.refresh(user)
 
     return {"message": "Пароль успешно изменен"}
+
+@router.post("/users/me/profile", response_model=MeOut, status_code=status.HTTP_200_OK)
+async def update_profile(
+    payload: ProfilePayload,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    user = await db.get(User, user.id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    if payload.delivery_address is not None:
+        raw = (payload.delivery_address or "").strip()
+        user.delivery_address = raw if raw else None
+    if payload.email_footer is not None:
+        raw = (payload.email_footer or "").strip()
+        user.email_footer = raw if raw else "С уважением, Пользователь!"
+    if payload.logo_url is not None:
+        user.logo_url = payload.logo_url.strip() if payload.logo_url else None
+
+    await db.commit()
+    return MeOut(id=user.id, login=user.login, role=user.role)
+

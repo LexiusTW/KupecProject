@@ -34,6 +34,7 @@ class UserCreate(BaseModel):
 class UserProfileUpdate(BaseModel):
     delivery_address: Optional[str] = None
     email_footer: Optional[str] = None
+    logo_url: Optional[str] = None
 
 from pydantic import ValidationError, field_validator
 
@@ -71,5 +72,6 @@ class UserSchema(BaseModel):
     correspondent_account: Optional[str] = None
     bic: Optional[str] = None
     bank_name: Optional[str] = None
+    logo_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
