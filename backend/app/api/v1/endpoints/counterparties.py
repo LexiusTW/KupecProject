@@ -63,11 +63,10 @@ async def get_counterparty(
     current_user = Depends(deps.get_current_user)
 ):
     cp = await db.get(Counterparty, cp_id)
-    if not cp: raise HTTPException(status_code=404, detail="Not found")
-    ensure_owner(cp, current_user.id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Not found")
     return cp
 
-@router.put("/{cp_id}", response_model=CounterpartyOut)
 async def update_counterparty(
     cp_id: int,
     payload: CounterpartyUpdate,

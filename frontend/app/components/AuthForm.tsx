@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import type { AuthFormData } from './types';
 import Notification, { NotificationProps } from './Notification';
 
-const API_BASE_URL = 'https://kupecbek.cloudpub.ru';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export default function AuthForm() {
   const [notifications, setNotifications] = useState<Omit<NotificationProps, 'onDismiss'>[]>([]);

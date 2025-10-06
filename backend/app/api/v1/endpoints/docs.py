@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.organization import Organization
 from app.api.deps import get_db, get_current_user
 from app.models.user import User
 
@@ -32,8 +33,13 @@ async def upload_logo(
 ):
     if file.content_type not in ALLOWED_IMG:
         raise HTTPException(status_code=415, detail="Поддерживаются только PNG/JPEG/WEBP/SVG")
-    if not user.inn:
-        raise HTTPException(status_code=400, detail="У пользователя не заполнен ИНН")
+    
+    # Загружаем организацию, чтобы получить ИНН и сохранить logo_url
+    organization = await db.get(Organization, user.organization_id)
+    if not organization:
+        raise HTTPException(status_code=404, detail="Организация пользователя не найдена")
+    if not organization.inn:
+        raise HTTPException(status_code=400, detail="У организации не заполнен ИНН")
 
     LOGO_DIR.mkdir(parents=True, exist_ok=True)
     ext = {
@@ -43,19 +49,16 @@ async def upload_logo(
         "image/svg+xml": ".svg",
     }.get(file.content_type, ".png")
 
-    filename = f"logo_{user.inn}{ext}"
+    filename = f"logo_{organization.inn}{ext}"
     dest_path = LOGO_DIR / filename
 
     with dest_path.open("wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    user = await db.get(User, user.id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    user.logo_url = f"/static/logos/{filename}"
+    organization.logo_url = f"/static/logos/{filename}"
     await db.commit()
 
-    return {"logo_url": user.logo_url}
+    return {"logo_url": organization.logo_url}
 
 
 class DocItem(BaseModel):
@@ -181,20 +184,21 @@ async def generate_document(
     if payload.variables:
         ctx.update(payload.variables)
 
-    db_user = await db.get(User, user.id)
-    if not db_user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    organization = await db.get(Organization, user.organization_id)
+    if not organization:
+        raise HTTPException(status_code=404, detail="Организация пользователя не найдена")
+
     ctx.update({
-        "org_login": db_user.login,
-        "org_email": db_user.email,
-        "org_inn": db_user.inn or "",
-        "org_director": db_user.director_name or "",
-        "org_legal_address": db_user.legal_address or "",
-        "org_ogrn": db_user.ogrn or "",
-        "org_kpp": db_user.kpp or "",
-        "org_okpo": db_user.okpo or "",
-        "org_okato_oktmo": db_user.okato_oktmo or "",
-        "logo_url": db_user.logo_url or "",
+        "org_login": user.login,
+        "org_email": user.email,
+        "org_inn": organization.inn or "",
+        "org_director": organization.director_name or "",
+        "org_legal_address": organization.legal_address or "",
+        "org_ogrn": organization.ogrn or "",
+        "org_kpp": organization.kpp or "",
+        "org_okpo": organization.okpo or "",
+        "org_okato_oktmo": organization.okato_oktmo or "",
+        "logo_url": organization.logo_url or "",
         "doc_number": number,
         "doc_date": datetime.now().strftime("%d.%m.%Y"),
     })
@@ -219,4 +223,3 @@ async def generate_document(
         return FileResponse(str(out_pdf), media_type="application/pdf", filename=out_pdf.name)
     else:
         return FileResponse(str(out_docx), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", filename=out_docx.name)
-

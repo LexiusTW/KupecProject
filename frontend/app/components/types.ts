@@ -20,13 +20,23 @@ export interface RegisterFormData {
   email: string;
   role: string;
   employee_name: string;
+  phone_number?: string;
+  organization: OrganizationFormData;
+}
 
-  // --- поля только для продавца:
-  phone_number?: string;   // номер телефона ответственного лица
-  director_name?: string;  // ФИО директора
-  legal_address?: string;  // юридический адрес
-  inn?: string;            // ИНН
-  organization?: any;      // Полные данные организации от DaData
+export interface OrganizationFormData {
+  company_name: string;
+  inn: string;
+  ogrn: string;
+  legal_address: string;
+  director_name: string;
+  kpp?: string;
+  okpo?: string;
+  okato_oktmo?: string;
+  bank_account?: string;
+  correspondent_account?: string;
+  bic?: string;
+  bank_name?: string;
 }
 
 export interface Product {

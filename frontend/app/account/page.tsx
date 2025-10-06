@@ -3,12 +3,11 @@
 import { useEffect, useState, ChangeEvent, useCallback, useMemo, useRef, KeyboardEvent } from 'react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
-import Link from 'next/link';
 import SkeletonLoader from '../components/SkeletonLoader';
 import Notification, { NotificationProps } from '../components/Notification';
 import ConfirmationModal from '../components/ConfirmationModal';
 
-const API_BASE_URL = 'https://kupecbek.cloudpub.ru';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 const clsInput = 'w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-amber-500 focus:border-amber-500';
 const clsInputError = 'w-full px-3 py-2 border border-red-500 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500';
 
@@ -75,189 +74,6 @@ type SupplierCreateForm = Partial<Omit<Supplier, 'id'>>;
 type SupplierFormErrors = { [K in keyof SupplierCreateForm]?: string };
 
 type Tab = 'requests' | 'suppliers' | 'counterparties' | 'profile';
-
-
-
-// --- Компонент для отображения списка поставщиков ---
-const SuppliersList = ({ suppliers, onEdit, loading, error }: { suppliers: Supplier[], onEdit: (supplier: Supplier) => void, loading: boolean, error: string | null }) => {
-  const [sort, setSort] = useState<{ key: keyof Supplier, order: 'asc' | 'desc' }>({ key: 'short_name', order: 'asc' });
-  const [searchTerm, setSearchTerm] = useState('');
-
-  const handleSort = (key: keyof Supplier) => {
-    setSort(prev => ({
-      key,
-      order: prev.key === key && prev.order === 'asc' ? 'desc' : 'asc',
-    }));
-  };
-
-  const getSortIndicator = (key: string) => {
-    if (sort.key !== key) return null;
-    return sort.order === 'asc' ? ' ▲' : ' ▼';
-  };
-
-  const filteredAndSortedSuppliers = useMemo(() => {
-    return suppliers
-      .filter(s =>
-        s.short_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.inn.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-      .sort((a, b) => {
-        const aValue = a[sort.key] || '';
-        const bValue = b[sort.key] || '';
-        if (aValue < bValue) return sort.order === 'asc' ? -1 : 1;
-        if (aValue > bValue) return sort.order === 'asc' ? 1 : -1;
-        return 0;
-      });
-  }, [suppliers, searchTerm, sort]);
-
-  if (loading) return <SkeletonLoader className="h-40 w-full" />;
-  if (error) return <div className="bg-white rounded-xl shadow p-6 text-red-600">{error}</div>;
-
-  return (
-    <div>
-      <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <input
-          type="text"
-          placeholder="Поиск по наименованию или ИНН..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className={clsInput}
-        />
-      </div>
-      {suppliers.length === 0 && (
-        <div className="bg-white rounded-xl shadow p-6 text-center">
-          <p className="text-gray-700">У вас пока нет добавленных поставщиков.</p>
-        </div>
-      )}
-      {suppliers.length > 0 && !filteredAndSortedSuppliers.length && (
-         <div className="bg-white rounded-xl shadow p-6 text-center">
-           <p className="text-gray-700">Поставщики не найдены.</p>
-         </div>
-      )}
-      {filteredAndSortedSuppliers.length > 0 && (
-        <div className="bg-white rounded-xl shadow overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort('short_name')}>Наименование{getSortIndicator('short_name')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort('inn')}>ИНН{getSortIndicator('inn')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Категории</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Действия</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200 text-sm">
-              {filteredAndSortedSuppliers.map(s => (
-                <tr key={s.id}>
-                  <td className="px-6 py-4 whitespace-nowrap font-medium">{s.short_name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">{s.inn}</td>
-                  <td className="px-6 py-4">
-                    {(s.category || []).slice(0, 4).join(', ')}
-                    {(s.category || []).length > 4 && '...'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <button onClick={() => onEdit(s)} className="text-amber-600 hover:underline text-sm">Изменить</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// --- Компонент для отображения списка контрагентов ---
-const CounterpartiesList = ({ counterparties, onEdit, loading, error }: { counterparties: Counterparty[], onEdit: (cp: Counterparty) => void, loading: boolean, error: string | null }) => {
-  const [sort, setSort] = useState<{ key: keyof Counterparty, order: 'asc' | 'desc' }>({ key: 'short_name', order: 'asc' });
-  const [searchTerm, setSearchTerm] = useState('');
-
-  const handleSort = (key: keyof Counterparty) => {
-    setSort(prev => ({
-      key,
-      order: prev.key === key && prev.order === 'asc' ? 'desc' : 'asc',
-    }));
-  };
-
-  const getSortIndicator = (key: string) => {
-    if (sort.key !== key) return null;
-    return sort.order === 'asc' ? ' ▲' : ' ▼';
-  };
-
-  const filteredAndSortedCounterparties = useMemo(() => {
-    return counterparties
-      .filter(cp =>
-        cp.short_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        cp.inn.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-      .sort((a, b) => {
-        const aValue = a[sort.key] || '';
-        const bValue = b[sort.key] || '';
-        if (aValue < bValue) return sort.order === 'asc' ? -1 : 1;
-        if (aValue > bValue) return sort.order === 'asc' ? 1 : -1;
-        return 0;
-      });
-  }, [counterparties, searchTerm, sort]);
-
-  if (loading) return <SkeletonLoader className="h-40 w-full" />;
-  if (error) return <div className="bg-white rounded-xl shadow p-6 text-red-600">{error}</div>;
-
-  return (
-    <div>
-       <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <input
-          type="text"
-          placeholder="Поиск по наименованию или ИНН..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className={clsInput}
-        />
-      </div>
-      {counterparties.length === 0 && (
-        <div className="bg-white rounded-xl shadow p-6 text-center">
-          <p className="text-gray-700">У вас пока нет контрагентов.</p>
-        </div>
-      )}
-      {counterparties.length > 0 && !filteredAndSortedCounterparties.length && (
-         <div className="bg-white rounded-xl shadow p-6 text-center">
-           <p className="text-gray-700">Контрагенты не найдены.</p>
-         </div>
-      )}
-      {filteredAndSortedCounterparties.length > 0 && (
-        <div className="bg-white rounded-xl shadow overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort('short_name')}>Наименование{getSortIndicator('short_name')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort('inn')}>ИНН/КПП{getSortIndicator('inn')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer" onClick={() => handleSort('legal_address')}>Юр. адрес{getSortIndicator('legal_address')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Контактное лицо</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Телефон</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Почта</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Действия</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200 text-sm">
-              {filteredAndSortedCounterparties.map(cp => (
-                <tr key={cp.id}>
-                  <td className="px-6 py-4 whitespace-nowrap font-medium">{cp.short_name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">{cp.inn}{cp.kpp ? ` / ${cp.kpp}` : ''}</td>
-                  <td className="px-6 py-4">{cp.legal_address}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">{cp.director || '—'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">{cp.phone || '—'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">{cp.email || '—'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <button onClick={() => onEdit(cp)} className="text-amber-600 hover:underline text-sm">Изменить</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-};
 
 const ProfileSettings = ({ addNotification }: { addNotification: (notif: Omit<NotificationProps, 'id' | 'onDismiss'>) => void }) => {
     const [login, setLogin] = useState('');
@@ -625,7 +441,6 @@ export default function AccountPage() {
   const [addrQuery, setAddrQuery] = useState('');
   const [addrSugg, setAddrSugg] = useState<DaDataAddr[]>([]);
   const [addrFocus, setAddrFocus] = useState(false);
-  const [addrLoading, setAddrLoading] = useState(false);
   const addrAbort = useRef<AbortController | null>(null);
 
   // Состояния для контрагентов
@@ -649,7 +464,6 @@ export default function AccountPage() {
   const [cpAddrQuery, setCpAddrQuery] = useState('');
   const [cpAddrSugg, setCpAddrSugg] = useState<DaDataAddr[]>([]);
   const [cpAddrFocus, setCpAddrFocus] = useState(false);
-  const [cpAddrLoading, setCpAddrLoading] = useState(false);
   const cpAddrAbort = useRef<AbortController | null>(null);
 
   // Состояния для сортировки и поиска поставщиков
@@ -743,7 +557,7 @@ export default function AccountPage() {
       }
 
       let i = 0;
-      let formattedValue = matrix.replace(/./g, (char) => {
+      const formattedValue = matrix.replace(/./g, (char) => {
         if (/[_\d]/.test(char) && i < digits.length) {
           return digits[i++];
         } else if (i >= digits.length) {
@@ -827,10 +641,6 @@ export default function AccountPage() {
     setSupplierFormErrors(errors);
     return Object.keys(errors).length === 0;
   }, [newSupplierForm]);
-
-  const handleCreateSupplier = async () => {
-    await handleSaveSupplier();
-  };
 
   // Форматируем номер телефона (digits) в отображаемую маску +7 (xxx) xxx-xx-xx
   const formatPhoneForDisplay = (digits?: string | null) => {
@@ -976,8 +786,7 @@ export default function AccountPage() {
 
   const fetchAddrSuggest = useCallback(async (q: string) => {
     addrAbort.current?.abort();
-    addrAbort.current = new AbortController();
-    setAddrLoading(true);
+    addrAbort.current = new AbortController();    
     try {
       const url = `${API_BASE_URL}/api/v1/suggest/address?q=${encodeURIComponent(q)}&count=5`;
       const r = await fetch(url, { credentials: 'include', signal: addrAbort.current.signal });
@@ -986,9 +795,8 @@ export default function AccountPage() {
     } catch {
       return [];
     } finally {
-      setAddrLoading(false);
     }
-  }, []); // Зависимости не нужны, так как addrAbort - это ref
+  }, []);
 
   const handlePickDadataParty = (party: DaDataParty) => {
     setNewSupplierForm({
@@ -1110,7 +918,7 @@ export default function AccountPage() {
       }
     
       let i = 0;
-      let formattedValue = matrix.replace(/./g, (char) => {
+      const formattedValue = matrix.replace(/./g, (char) => {
         if (/[_\d]/.test(char) && i < digits.length) {
           return digits[i++];
         } else if (i >= digits.length) {
@@ -1238,7 +1046,6 @@ export default function AccountPage() {
   const fetchCpAddrSuggest = useCallback(async (q: string) => {
     cpAddrAbort.current?.abort();
     cpAddrAbort.current = new AbortController();
-    setCpAddrLoading(true);
     try {
       const url = `${API_BASE_URL}/api/v11/suggest/address?q=${encodeURIComponent(q)}&count=5`;
       const r = await fetch(url, { credentials: 'include', signal: cpAddrAbort.current.signal });
@@ -1247,7 +1054,6 @@ export default function AccountPage() {
     } catch {
       return [];
     } finally {
-      setCpAddrLoading(false);
     }
   }, []);
 
@@ -1263,10 +1069,10 @@ export default function AccountPage() {
 
   useEffect(() => {
     const qAddr = cpAddrQuery.trim();
-    if (addrFocus && qAddr.length >= 3) {
+    if (cpAddrFocus && qAddr.length >= 3) {
       const t = setTimeout(() => fetchCpAddrSuggest(qAddr).then(setCpAddrSugg), 300);
       return () => clearTimeout(t);
-    } else if (!addrFocus) {
+    } else if (!cpAddrFocus) {
       setCpAddrSugg([]);
     }
   }, [cpAddrQuery, cpAddrFocus, fetchCpAddrSuggest]);

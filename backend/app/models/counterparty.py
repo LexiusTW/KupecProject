@@ -31,4 +31,4 @@ class Counterparty(Base):
     phone = Column(String(50), nullable=False)                # Телефон
     email = Column(String(255), nullable=False)               # Электронная почта
 
-    user = relationship("User", backref="counterparties")
+    user = relationship("User", back_populates="counterparties")

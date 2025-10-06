@@ -6,9 +6,9 @@ import Header from '@/app/components/Header';
 import Footer from '@/app/components/Footer';
 import SkeletonLoader from '@/app/components/SkeletonLoader';
 import Notification, { NotificationProps } from '@/app/components/Notification'; // Assuming NotificationProps is also exported from here
-import { FaDownload, FaFilePdf, FaSpinner, FaCheckCircle, FaExclamationCircle } from 'react-icons/fa';
+import { FaDownload, FaFilePdf, FaSpinner } from 'react-icons/fa';
 
-const API_BASE_URL = 'https://kupecbek.cloudpub.ru';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 const clsInput = 'w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-amber-500 focus:border-amber-500';
 const clsInputError = 'w-full px-3 py-2 border border-red-500 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500';
 
@@ -287,14 +287,7 @@ export default function DealPage() {
   const [error, setError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<Omit<NotificationProps, 'onDismiss'>[]>([]);
 
-  const [contactPerson, setContactPerson] = useState('');
-  const [bankName, setBankName] = useState('');
-  const [bankBik, setBankBik] = useState('');
-  const [bankCorrespondentAccount, setBankCorrespondentAccount] = useState('');
-  const [bankSettlementAccount, setBankSettlementAccount] = useState('');
-  const [notes, setNotes] = useState('');
   const [isGeneratingContract, setIsGeneratingContract] = useState(false);
-  const [contractDownloadUrl, setContractDownloadUrl] = useState<string | null>(null);
   const [showBankDetailsModal, setShowBankDetailsModal] = useState(false);
   const [bankDetailsFilled, setBankDetailsFilled] = useState(false);
   const [currentAction, setCurrentAction] = useState<'contract' | 'invoice' | null>(null);
@@ -322,12 +315,6 @@ export default function DealPage() {
         const data: RequestDetails = await response.json();
         setRequest(data);
         if (data.counterparty) {
-          setContactPerson(data.counterparty.director || '');
-          setBankName(data.counterparty.bank_name || '');
-          setBankBik(data.counterparty.bank_bik || '');
-          setBankCorrespondentAccount(data.counterparty.bank_corr || '');
-          setBankSettlementAccount(data.counterparty.bank_account || '');
-
           const bankDetailsResponse = await fetch(`${API_BASE_URL}/api/v1/counterparties/${data.counterparty.id}/has-bank-details`, {
             credentials: 'include',
           });
@@ -338,9 +325,6 @@ export default function DealPage() {
             console.error('Failed to fetch bank details status');
             setBankDetailsFilled(false);
           }
-        }
-        if (data.contract_url) {
-          setContractDownloadUrl(data.contract_url);
         }
       } catch (e: any) {
         setError(e.message || 'Ошибка загрузки');

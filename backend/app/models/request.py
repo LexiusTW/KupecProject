@@ -11,15 +11,16 @@ class Request(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     display_id = Column(Integer, server_default=request_display_id_seq.next_value(), nullable=False, unique=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     counterparty_id = Column(Integer, ForeignKey("counterparties.id"), nullable=True)
     delivery_address = Column(String, nullable=True)
     comment = Column(String, nullable=True)
     delivery_at = Column(Date, nullable=True) # Дата поставки
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     status = Column(String, nullable=False, server_default="Заявка создана")
-    winner_offer_id = Column(Integer, ForeignKey("offers.id"), nullable=True)
+    winner_offer_id = Column(Integer, ForeignKey("offers.id", use_alter=True), nullable=True)
 
+    user = relationship("User", back_populates="requests")
     items = relationship("RequestItem", back_populates="request", cascade="all, delete-orphan")
     counterparty = relationship("Counterparty")
     offers = relationship("Offer", back_populates="request", foreign_keys="Offer.request_id", cascade="all, delete-orphan")
@@ -111,7 +112,7 @@ class Comment(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     request_id = Column(UUID(as_uuid=True), ForeignKey("requests.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     text = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

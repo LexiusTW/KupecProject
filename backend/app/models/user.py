@@ -17,24 +17,21 @@ class User(Base):
     parent_id = Column(Integer, ForeignKey("users.id"))
     parent = relationship("User", remote_side=[id], backref="children")
 
-    inn = Column(String, unique=True, index=True, nullable=True)
-    company_name = Column(String, nullable=True)
-    director_name = Column(String, nullable=True)
-    phone_number = Column(String, unique=True, nullable=True)
-    legal_address = Column(String, nullable=True)
-    ogrn = Column(String, nullable=True)
-    kpp = Column(String, nullable=True)
-    okpo = Column(String, nullable=True)
-    okato_oktmo = Column(String, nullable=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    organization = relationship("Organization", back_populates="users")
 
     employee_name = Column(String, nullable=False)
-    bank_account = Column(String, nullable=True)
-    correspondent_account = Column(String, nullable=True)
-    bic = Column(String, nullable=True)
-    bank_name = Column(String, nullable=True)
+    phone_number = Column(String, unique=True, nullable=True)
 
     delivery_address = Column(String(500), nullable=True)
     email_footer = Column(Text, nullable=True)
 
-    logo_url = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Каскадное удаление связанных сущностей
     comments = relationship("Comment", back_populates="user")
+    counterparties = relationship("Counterparty", back_populates="user", cascade="all, delete-orphan")
+    suppliers = relationship("Supplier", back_populates="user", cascade="all, delete-orphan")
+    requests = relationship("Request", back_populates="user", cascade="all, delete-orphan")
+    

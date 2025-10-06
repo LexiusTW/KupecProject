@@ -1,3 +1,4 @@
+from enum import Enum
 import pathlib
 import os
 from datetime import datetime
@@ -15,6 +16,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.api.deps import get_db, get_current_user
 from app.core.config import settings
+from app.schemas.user import Role as UserRole
 from app.models.user import User
 from app.models.request import Request, RequestItem, Offer, OfferItem, Comment
 from app.models.crm import Email
@@ -25,6 +27,15 @@ from app.schemas.request import RequestCreate, RequestOut, RequestItemCreate, Re
 from app.services.email_service import send_email_background
 
 router = APIRouter()
+
+class RequestStatus(str, Enum):
+    CREATED = "Заявка создана"
+    SUPPLIER_SEARCH = "Поиск поставщиков"
+    OFFER_SENT = "КП отправлено"
+    PAID = "Оплачено"
+    IN_DELIVERY = "В доставке"
+    CLOSED = "Сделка закрыта"
+
 
 class SavedItemBase(BaseModel):
     id: str
@@ -740,3 +751,37 @@ async def send_request_to_suppliers(
     await db.commit()
 
     return {"message": f"Request sending process started for {total_emails_sent} recipients."}
+
+
+class StatusUpdatePayload(BaseModel):
+    status: RequestStatus
+
+@router.post("/requests/{request_id}/status", response_model=RequestOut, status_code=status.HTTP_200_OK)
+async def update_request_status(
+    request_id: UUID,
+    payload: StatusUpdatePayload,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Универсальный эндпоинт для изменения статуса заявки."""
+    q = select(Request).where(Request.id == request_id).options(
+        selectinload(Request.items),
+        selectinload(Request.offers).selectinload(Offer.items),
+        selectinload(Request.offers).selectinload(Offer.supplier),
+        joinedload(Request.counterparty),
+        selectinload(Request.comments).selectinload(Comment.user)
+    )
+    req = (await db.execute(q)).scalar_one_or_none()
+
+    if not req:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+
+    # Ограничение: только снабженец может начать сбор предложений
+    if payload.status == RequestStatus.SUPPLIER_SEARCH:
+        if user.role != UserRole.SUPPLY_MANAGER.value:
+            raise HTTPException(status_code=403, detail="Только снабженец может начать сбор предложений.")
+
+    req.status = payload.status.value
+    await db.commit()
+    await db.refresh(req)
+    return req
