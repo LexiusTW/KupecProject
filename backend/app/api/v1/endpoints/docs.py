@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.organization import Organization
 from app.api.deps import get_db, get_current_user
 from app.models.user import User
+from app.schemas.excel import FileListResponse
 
 router = APIRouter(prefix="/docs", tags=["docs"])
 
@@ -223,3 +224,45 @@ async def generate_document(
         return FileResponse(str(out_pdf), media_type="application/pdf", filename=out_pdf.name)
     else:
         return FileResponse(str(out_docx), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", filename=out_docx.name)
+
+
+@router.get("/generated", response_model=FileListResponse)
+async def list_generated_documents(
+    user: User = Depends(get_current_user),
+):
+    """Возвращает список сгенерированных документов из папки excel_outgoing."""
+    if not OUT_DIR.exists() or not OUT_DIR.is_dir():
+        return FileListResponse(directory=str(OUT_DIR), files=[], total_count=0)
+
+    try:
+        # Получаем список файлов, отсортированный по времени изменения (новые вверху)
+        files = sorted(
+            (f for f in OUT_DIR.iterdir() if f.is_file()),
+            key=lambda f: f.stat().st_mtime,
+            reverse=True
+        )
+        filenames = [f.name for f in files]
+        return FileListResponse(directory=str(OUT_DIR.name), files=filenames, total_count=len(filenames))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при чтении директории: {e}"
+        )
+
+
+@router.get("/download/{filename}")
+async def download_generated_document(
+    filename: str,
+    user: User = Depends(get_current_user),
+):
+    """Скачивание сгенерированного документа по имени файла."""
+    file_path = (OUT_DIR / filename).resolve()
+
+    # Проверка безопасности, чтобы нельзя было выйти за пределы OUT_DIR
+    if not str(file_path).startswith(str(OUT_DIR.resolve())):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Доступ запрещен")
+
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Файл не найден")
+
+    return FileResponse(path=file_path, filename=filename)
