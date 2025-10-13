@@ -14,7 +14,9 @@ app = FastAPI(
 
 origins = [
     "http://localhost:3000",
-    "https://kupecc.cloudpub.ru",
+    "https://kupec.cloudpub.ru",
+    "https://xn----jtbogjfed5a6a.xn--p1ai",
+    "https://пром-купец.рф"
 ]
 
 app.add_middleware(

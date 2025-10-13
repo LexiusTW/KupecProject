@@ -129,7 +129,7 @@ def main():
     config["formatters"]["access"]["datefmt"] = "%Y-%m-%d %H:%M:%S"
     
     # 3) Стартуем API
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True, log_config=config)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True, log_config=config, proxy_headers=True)
     
 
 if __name__ == "__main__":

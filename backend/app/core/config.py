@@ -27,13 +27,13 @@ class Settings:
     )
 
     # Настройки кук для токенов
-    COOKIE_DOMAIN: str | None = os.getenv("COOKIE_DOMAIN") or None 
+    COOKIE_DOMAIN: str | None = os.getenv("COOKIE_DOMAIN") or None
     COOKIE_SECURE: bool = os.getenv("COOKIE_SECURE", "false").lower() == "true"
     COOKIE_SAMESITE: str = os.getenv("COOKIE_SAMESITE", "lax").lower()
     COOKIE_PATH: str = os.getenv("COOKIE_PATH", "/")
 
     # URL фронтенда для генерации ссылок в письмах
-    FRONTEND_URL: str = os.getenv("FRONTEND_URL")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
     DADATA_TOKEN: str = os.getenv("DADATA_TOKEN", "")
     DADATA_SECRET: str = os.getenv("DADATA_SECRET", "")

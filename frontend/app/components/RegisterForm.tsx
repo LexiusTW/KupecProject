@@ -3,10 +3,10 @@
 import { useRef, useState, useEffect, useCallback, ChangeEvent } from 'react';
 import { useForm, SubmitHandler, Controller } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
-import type { RegisterFormData, DaDataParty, DaDataAddr } from './types';
+import type { RegisterFormData, DaDataParty, DaDataAddr, OrganizationFormData } from './types';
 import Notification, { NotificationProps } from './Notification';
 
-const API_BASE_URL = 'https://kupecbek.cloudpub.ru';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export default function RegisterForm() {
   const [notifications, setNotifications] = useState<Omit<NotificationProps, 'onDismiss'>[]>([]);
@@ -17,14 +17,19 @@ export default function RegisterForm() {
 
   const { register, handleSubmit, formState: { errors }, control, setValue, watch } = useForm<RegisterFormData>({
     defaultValues: {
-      phone_number: '',
       login: '',
       password: '',
       email: '',
-      role: 'Менеджер',
+      role: 'Директор',
       employee_name: '',
-      director_name: '',
-      legal_address: '',
+      phone_number: '',
+      organization: {
+        company_name: '',
+        inn: '',
+        ogrn: '',
+        legal_address: '',
+        director_name: '',
+      }
     },
   });
 
@@ -37,21 +42,20 @@ export default function RegisterForm() {
     setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
-  // DaData states for party (organization)
+  // DaData states
   const [dadataQuery, setDadataQuery] = useState('');
   const [dadataSugg, setDadataSugg] = useState<DaDataParty[]>([]);
   const [dadataFocus, setDadataFocus] = useState(false);
   const [dadataLoading, setDadataLoading] = useState(false);
   const dadataAbort = useRef<AbortController | null>(null);
 
-  // DaData states for address
   const [addrQuery, setAddrQuery] = useState('');
   const [addrSugg, setAddrSugg] = useState<DaDataAddr[]>([]);
   const [addrFocus, setAddrFocus] = useState(false);
   const [addrLoading, setAddrLoading] = useState(false);
   const addrAbort = useRef<AbortController | null>(null);
   
-  const legalAddressValue = watch('legal_address');
+  const legalAddressValue = watch('organization.legal_address');
 
   useEffect(() => {
     setAddrQuery(legalAddressValue || '');
@@ -61,7 +65,6 @@ export default function RegisterForm() {
   const onSubmit: SubmitHandler<RegisterFormData> = async (data) => {
     if (submittingRef.current) return;
     submittingRef.current = true;
-
     setIsLoading(true);
 
     const endpoint = `${API_BASE_URL}/api/v1/register`;
@@ -72,19 +75,21 @@ export default function RegisterForm() {
       email: data.email,
       role: data.role,
       employee_name: data.employee_name,
-      phone_number: data.phone_number?.replace(/\D/g, ''), // Отправляем только цифры
-      director_name: data.director_name,
-      legal_address: data.legal_address,
-      inn: data.organization?.inn,
-      ogrn: data.organization?.ogrn,
-      kpp: data.organization?.kpp,
-      okpo: data.organization?.okpo,
-      okato_oktmo: data.organization?.okato,
-      company_name: data.organization?.value,
-      bank_account: undefined,
-      correspondent_account: undefined,
-      bic: undefined,
-      bank_name: undefined,
+      phone_number: data.phone_number?.replace(/\D/g, ''),
+      organization: {
+        company_name: data.organization.company_name,
+        inn: data.organization.inn,
+        ogrn: data.organization.ogrn,
+        legal_address: data.organization.legal_address,
+        director_name: data.organization.director_name,
+        kpp: data.organization.kpp || undefined,
+        okpo: data.organization.okpo || undefined,
+        okato_oktmo: data.organization.okato_oktmo || undefined,
+        bank_account: data.organization.bank_account || undefined,
+        correspondent_account: data.organization.correspondent_account || undefined,
+        bic: data.organization.bic || undefined,
+        bank_name: data.organization.bank_name || undefined,
+      }
     };
 
     try {
@@ -97,7 +102,11 @@ export default function RegisterForm() {
 
       if (!resp.ok) {
         const er = await resp.json().catch(() => ({}));
-        throw new Error(er.detail || 'Ошибка регистрации');
+        // More detailed error message
+        const message = Array.isArray(er.detail) 
+          ? er.detail.map((d: any) => `${d.loc.join(' -> ')} - ${d.msg}`).join('; ') 
+          : er.detail || 'Ошибка регистрации';
+        throw new Error(message);
       }
 
       router.push('/request');
@@ -111,16 +120,10 @@ export default function RegisterForm() {
 
   const handlePhoneNumberChange = (e: ChangeEvent<HTMLInputElement>, field: any) => {
     const input = e.target;
-    let digits = input.value.replace(/\D/g, '');
+    const digits = input.value.replace(/\D/g, '');
     const matrix = "+7 (___) ___-__-__";
-
-    if (digits.length > 0) {
-      if (digits.startsWith('8')) digits = '7' + digits.slice(1);
-      if (!digits.startsWith('7')) digits = '7' + digits;
-    }
-
     let i = 0;
-    let formattedValue = matrix.replace(/./g, (char) => {
+    const formattedValue = matrix.replace(/./g, (char) => {
       if (/[_\d]/.test(char) && i < digits.length) {
         return digits[i++];
       } else if (i >= digits.length) {
@@ -128,9 +131,7 @@ export default function RegisterForm() {
       }
       return char;
     });
-
     field.onChange(formattedValue);
-
     const setCursorToEnd = () => {
       input.selectionStart = input.selectionEnd = formattedValue.length;
     };
@@ -194,16 +195,21 @@ export default function RegisterForm() {
 }, [addrQuery, addrFocus, fetchAddrSuggest]);
 
   const handlePickDadataParty = (party: DaDataParty) => {
-    setValue('organization', party);
-    setValue('legal_address', party.legal_address || '');
-    setValue('director_name', ' '); // dadata doesn't provide director name in suggestions
-    setDadataQuery(party.short_name || party.value || '');
+    setValue('organization.company_name', party.value);
+    setValue('organization.inn', party.inn);
+    setValue('organization.ogrn', party.ogrn || '');
+    setValue('organization.legal_address', party.legal_address || '');
+    setValue('organization.director_name', '');
+    setValue('organization.kpp', party.kpp || '');
+    setValue('organization.okpo', party.okpo || '');
+    setValue('organization.okato_oktmo', party.okato || '');
+    setDadataQuery(party.value);
     setDadataSugg([]);
     setDadataFocus(false);
   };
   
   const onPickAddress = (val: string) => {
-    setValue('legal_address', val);
+    setValue('organization.legal_address', val);
     setAddrQuery(val);
     setAddrSugg([]);
     setAddrFocus(false);
@@ -237,11 +243,7 @@ export default function RegisterForm() {
           autoComplete="new-password"
         />
         {watch('password') && (
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute inset-y-0 right-0 top-7 pr-3 flex items-center text-gray-500"
-          >
+          <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 top-7 pr-3 flex items-center text-gray-500">
             <i className={showPassword ? 'ri-eye-off-line' : 'ri-eye-line'}></i>
           </button>
         )}
@@ -266,17 +268,16 @@ export default function RegisterForm() {
       </div>
 
       <div>
-        <label htmlFor="employee_name" className={label}>ФИО сотрудника</label>
-        <input id="employee_name" type="text" {...register('employee_name', { required: 'ФИО сотрудника обязательно' })} className={input} autoComplete="name" />
+        <label htmlFor="employee_name" className={label}>Ваше ФИО</label>
+        <input id="employee_name" type="text" {...register('employee_name', { required: 'ФИО обязательно' })} className={input} autoComplete="name" />
         {errors.employee_name && <p className={err}>{errors.employee_name.message}</p>}
       </div>
 
       <div>
-        <label htmlFor="phone_number" className={label}>Телефон ответственного</label>
+        <label htmlFor="phone_number" className={label}>Ваш рабочий телефон</label>
         <Controller
           name="phone_number"
           control={control}
-          rules={{ required: 'Номер обязателен' }}
           render={({ field }) => (
             <input
               id="phone_number"
@@ -290,10 +291,10 @@ export default function RegisterForm() {
             />
           )}
         />
-        {errors.phone_number && <p className={err}>{errors.phone_number.message}</p>}
       </div>
 
-      <div className="relative">
+      <div className="relative pt-4 border-t mt-4">
+        <p className="font-medium text-gray-800 mb-2">Данные организации</p>
         <label htmlFor="organization" className={label}>Организация</label>
         <input
           id="organization"
@@ -311,7 +312,7 @@ export default function RegisterForm() {
           <div className="absolute z-40 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow-lg">
             {dadataSugg.map((p, i) => (
               <button type="button" key={i} onMouseDown={() => handlePickDadataParty(p)} className="block w-full text-left px-3 py-2 hover:bg-amber-50 text-sm">
-                <div className="font-semibold">{p.short_name || p.value}</div>
+                <div className="font-semibold">{p.value}</div>
                 <div className="text-xs text-gray-600">ИНН: {p.inn}, {p.legal_address}</div>
               </button>
             ))}
@@ -319,12 +320,10 @@ export default function RegisterForm() {
         )}
       </div>
 
-      <input type="hidden" {...register('organization')} />
-
       <div>
         <label htmlFor="director_name" className={label}>ФИО директора</label>
-        <input id="director_name" type="text" placeholder='Иванов Иван Иванович' {...register('director_name', { required: 'ФИО обязательно' })} className={input} autoComplete="off" />
-        {errors.director_name && <p className={err}>{errors.director_name.message}</p>}
+        <input id="director_name" type="text" placeholder='Иванов Иван Иванович' {...register('organization.director_name', { required: 'ФИО обязательно' })} className={input} autoComplete="off" />
+        {errors.organization?.director_name && <p className={err}>{errors.organization.director_name.message}</p>}
       </div>
 
       <div className='relative'>
@@ -333,12 +332,12 @@ export default function RegisterForm() {
             id="legal_address" 
             type="text"
             placeholder='Начните вводить адрес...'
-            {...register('legal_address', { required: 'Юр. адрес обязателен' })} 
+            {...register('organization.legal_address', { required: 'Юр. адрес обязателен' })} 
             className={input} 
             autoComplete="off"
             value={addrQuery}
             onChange={(e) => {
-                setValue('legal_address', e.target.value);
+                setValue('organization.legal_address', e.target.value);
                 setAddrQuery(e.target.value);
             }}
             onFocus={() => setAddrFocus(true)}
@@ -359,10 +358,8 @@ export default function RegisterForm() {
                 {addrLoading && <div className="px-3 py-2 text-xs text-gray-500">Загрузка...</div>}
             </div>
         )}
-        {errors.legal_address && <p className={err}>{errors.legal_address.message}</p>}
+        {errors.organization?.legal_address && <p className={err}>{errors.organization.legal_address.message}</p>}
       </div>
-
-      
 
       <button type="submit" disabled={isLoading} className="w-full bg-amber-600 text-white py-2 px-4 rounded-md hover:bg-amber-700 disabled:opacity-50">
         {isLoading ? 'Регистрируем...' : 'Зарегистрироваться'}

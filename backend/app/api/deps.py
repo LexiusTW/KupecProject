@@ -11,7 +11,7 @@ from app.schemas.token import TokenPayload
 from app.schemas.user import Role
 
 from sqlalchemy.orm import Session as SyncSession
-from app.crud.user import get_by_id_with_role as crud_get_by_id_with_role
+from app.crud import user as crud_user
 from app.models.user import User
 
 
@@ -67,7 +67,10 @@ async def get_current_user_optional(
     holder = {"user": None}
 
     def _sync_get(sdb: SyncSession):
-        holder["user"] = crud_get_by_id_with_role(sdb, role=role, user_id=user_id)
+        user = crud_user.get_by_id(sdb, user_id=user_id)
+        # Явно проверяем роль из токена с ролью из БД
+        if user and user.role.lower() == role:
+            holder["user"] = user
 
     await db.run_sync(_sync_get)
     user = holder["user"]

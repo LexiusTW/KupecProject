@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const API_URL = "https://kupecbek.cloudpub.ru";
+const API_URL = "/api-proxy";
 
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
+
+  if (path.startsWith("/api-proxy")) {
+    return NextResponse.next();
+  }
 
   // Разрешаем всегда ходить на статику и иконки
   if (path.startsWith("/_next") || path.startsWith("/favicon.ico")) {
@@ -14,19 +18,21 @@ export async function middleware(req: NextRequest) {
   // Проверяем access токен через бэкенд
   let isValid = false;
   try {
-    const res = await fetch(`${API_URL}/api/v1/auth/verify`, {
+    // Используем внутренний адрес Docker-сервиса
+    const verifyUrl = "http://backend:8000/api/v1/auth/verify";
+    const res = await fetch(verifyUrl, {
       method: "GET",
       headers: {
+        // Передаем куки из изначального запроса
         cookie: req.headers.get("cookie") || "",
       },
-      credentials: "include",
     });
 
     if (res.ok) {
       isValid = true;
     }
   } catch (e) {
-    console.error("Ошибка проверки токена:", e);
+    console.error("[Middleware] Error fetching verify endpoint:", e);
   }
 
   // === 1. Корень ===
@@ -40,7 +46,6 @@ export async function middleware(req: NextRequest) {
   if (!isValid) {
     if (
       path.startsWith("/auth") ||
-      path.startsWith("/auth") ||
       /^\/request\/[^/]+$/.test(path)
     ) {
       return NextResponse.next();
@@ -49,7 +54,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // === 3. Есть валидный токен ===
-  if (path.startsWith("/auth") || path.startsWith("/auth")) {
+  if (path.startsWith("/auth")) {
     return NextResponse.redirect(new URL("/request", req.url));
   }
 

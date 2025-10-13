@@ -7,3 +7,4 @@ from app.models.request import Request, RequestItem
 from app.models.user import User
 from app.models.counterparty import Counterparty
 from app.models.offer_token import OfferToken
+from app.models.organization import Organization

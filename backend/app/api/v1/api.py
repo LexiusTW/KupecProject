@@ -16,5 +16,5 @@ api_router.include_router(counterparties.router, prefix="/counterparties", tags=
 api_router.include_router(contracts.router, prefix="/contracts", tags=["contracts"]) 
 api_router.include_router(excel.router, tags=["excel"])
 api_router.include_router(suppliers.router, tags=["suppliers"])
-api_router.include_router(calc.router)
-api_router.include_router(docs.router)
+api_router.include_router(calc.router, tags=["calc"])
+api_router.include_router(docs.router, tags=["docs"])

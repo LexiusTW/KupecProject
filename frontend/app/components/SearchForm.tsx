@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { Listbox } from '@headlessui/react';
 import { ChevronUpDownIcon } from '@heroicons/react/20/solid';
 
-const API_BASE_URL = 'https://kupecbek.cloudpub.ru';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export type SearchFormData = {
   supplier: string;

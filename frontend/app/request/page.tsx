@@ -7,7 +7,7 @@ import SkeletonLoader from '../components/SkeletonLoader';
 import Notification, { NotificationProps } from '../components/Notification';
 import Link from 'next/link';
 
-const API_BASE_URL = 'https://kupecbek.cloudpub.ru';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 const units = [
   { value: 'шт', label: 'Штук (шт)' },
@@ -174,14 +174,6 @@ type HeaderErrors = {
   counterparty?: string;
 };
 
-type EmailGroup = {
-  id: string;
-  name: string;
-  items: SavedItem[];
-  selectedSupplierIds: number[];
-  manualEmails: string;
-};
-
 type EmailEntry = {
   id: string;
   email: string;
@@ -213,7 +205,7 @@ const formatSavedItem = (item: SavedItem) => {
   return `${parts} - ${g.quantity} ${g.unit || 'шт.'}`;
 };
 
-const ItemSelectionDropdown = ({ items, selectedIds, onSelectionChange, catKind, disabled }: { items: SavedItem[], selectedIds: Set<string>, onSelectionChange: (ids: Set<string>) => void, catKind: RowKind, disabled?: boolean }) => {
+const ItemSelectionDropdown = ({ items, selectedIds, onSelectionChange, disabled }: { items: SavedItem[], selectedIds: Set<string>, onSelectionChange: (ids: Set<string>) => void, catKind: RowKind, disabled?: boolean }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -295,10 +287,11 @@ const PreviewItemsTable = ({ items }: { items: SavedItem[] }) => {
 
 type Tab = 'create' | 'list';
 
-const RequestsList = () => {
+const RequestsList = ({ onSwitchToCreate }: { onSwitchToCreate: () => void }) => {
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [requestsError, setRequestsError] = useState<string | null>(null);
+  const [innMap, setInnMap] = useState<Record<number, string>>({});
   const [sort, setSort] = useState<{ key: keyof RequestRow, order: 'asc' | 'desc' }>({ key: 'created_at', order: 'desc' });
   const [filters, setFilters] = useState({
     date: '',
@@ -315,11 +308,36 @@ const RequestsList = () => {
           credentials: 'include',
         });
         if (!response.ok) {
-          const er = await response.json().catch(() => ({}));
+          await response.json().catch(() => ({}));
           throw new Error('Не удалось загрузить заявки');
         }
         const data = (await response.json()) as RequestRow[];
         setRequests(Array.isArray(data) ? data : []);
+
+        const counterpartiesToFetch = data
+          .map(req => req.counterparty)
+          .filter(cp => cp && !cp.inn);
+
+        if (counterpartiesToFetch.length > 0) {
+          const uniqueCpIds = [...new Set(counterpartiesToFetch.map(cp => cp!.id))];
+          
+          const innPromises = uniqueCpIds.map(id =>
+            fetch(`${API_BASE_URL}/api/v1/counterparties/${id}`, { credentials: 'include' })
+              .then(res => res.ok ? res.json() : Promise.resolve(null))
+              .then(cpData => cpData ? { id, inn: cpData.inn } : null)
+          );
+
+          Promise.all(innPromises).then(results => {
+            const newInnMap: Record<number, string> = {};
+            results.forEach(result => {
+              if (result) {
+                newInnMap[result.id] = result.inn;
+              }
+            });
+            setInnMap(prevMap => ({ ...prevMap, ...newInnMap }));
+          });
+        }
+
       } catch (e: any) {
         setRequestsError(e.message || 'Ошибка загрузки');
       } finally {
@@ -372,7 +390,7 @@ const RequestsList = () => {
         const statusMatch = filters.status ? req.status === filters.status : true;
         const cpMatch = filters.counterparty ? 
           (req.counterparty?.short_name.toLowerCase().includes(filters.counterparty.toLowerCase()) ||
-          req.counterparty?.inn.includes(filters.counterparty)) : true;
+          req.counterparty?.inn?.includes(filters.counterparty)) : true;
         return statusMatch && cpMatch && dateMatch;
       })
       .sort((a, b) => {
@@ -408,9 +426,9 @@ const RequestsList = () => {
     return (
       <div className="bg-white rounded-xl shadow p-6 text-center">
         <p className="text-gray-700">У вас пока нет заявок.</p>
-        <Link href="/request" className="inline-block mt-4 border border-amber-600 text-amber-700 px-4 py-2 rounded-md hover:bg-amber-50">
+        <button onClick={onSwitchToCreate} className="inline-block mt-4 border border-amber-600 text-amber-700 px-4 py-2 rounded-md hover:bg-amber-50">
           Оставить первую заявку
-        </Link>
+        </button>
       </div>
     )
   }
@@ -464,13 +482,13 @@ const RequestsList = () => {
                 Контрагент{getSortIndicator('counterparty')}
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Количество
+                Количество позиций
               </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredAndSortedRequests.map((request) => (
-              <tr key={request.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => window.location.href = `/request/my/${request.id}`}>
+              <tr key={request.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => window.location.href = `/request/${request.id}`}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{request.display_id}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(request.created_at).toLocaleDateString('ru-RU')}</td>
                 <td className="px-6 py-4 whitespace-nowrap">
@@ -479,10 +497,15 @@ const RequestsList = () => {
                 <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={request.delivery_address || ''}>{request.delivery_address}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {request.counterparty ? (
-                    <div>
-                      <div>{request.counterparty.short_name}</div>
-                      <div className="text-xs text-gray-400">ИНН: {request.counterparty.inn}</div>
-                    </div>
+                    (() => {
+                      const inn = request.counterparty.inn || innMap[request.counterparty.id];
+                      return (
+                        <div>
+                          <div>{request.counterparty.short_name}</div>
+                          {inn && <div className="text-xs text-gray-400">ИНН: {inn}</div>}
+                        </div>
+                      )
+                    })()
                   ) : '—'}
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-500 text-center">{request.items.length}</td>
@@ -515,25 +538,20 @@ export default function RequestPage() {
   const [cpSuggestions, setCpSuggestions] = useState<Counterparty[]>([]);
   const [cpFocus, setCpFocus] = useState(false);
   const [cpFormErrors, setCpFormErrors] = useState<CounterpartyFormErrors>({});
-  const [cpSearchError, setCpSearchError] = useState('');
   // Состояния для подсказок юр. адреса в модальном окне
   const [cpAddrQuery, setCpAddrQuery] = useState('');
   const [cpAddrSugg, setCpAddrSugg] = useState<DaDataAddr[]>([]);
   const [cpAddrFocus, setCpAddrFocus] = useState(false);
-  const [cpAddrLoading, setCpAddrLoading] = useState(false);
   const cpAddrAbort = useRef<AbortController | null>(null);
   // Состояния для поиска контрагента в DaData
   const [cpDadataQuery, setCpDadataQuery] = useState('');
   const [cpDadataSugg, setCpDadataSugg] = useState<DaDataParty[]>([]);
   const [cpDadataFocus, setCpDadataFocus] = useState(false);
-  const [cpDadataLoading, setCpDadataLoading] = useState(false);
-  const cpDadataAbort = useRef<AbortController | null>(null);
 
 
   // флаги сохранения адреса
   const [addressSaved, setAddressSaved] = useState(true);
-  const [addressDirty, setAddressDirty] = useState(false); // unused
-  const [addrLoading, setAddrLoading] = useState(false);
+  const [addrLoading, setAddrLoading] = useState(false); // unused but might be useful later
 
   // DaData
   const [addrQuery, setAddrQuery] = useState('');
@@ -560,7 +578,6 @@ export default function RequestPage() {
   // Состояния для модального окна рассылки
   const [sendCategoryEnabled, setSendCategoryEnabled] = useState<Record<string, boolean>>({});
   const [emailGroupsConfig, setEmailGroupsConfig] = useState<Record<string, EmailEntry[]>>({});
-  const [sendCategoryOptions, setSendCategoryOptions] = useState<Record<string, Supplier[]>>({});
 
   const handleOpenSendModal = () => {
     const initialEnabledState: Record<string, boolean> = {};
@@ -624,7 +641,7 @@ ${emailFooter}`;
     });
 
     setEmailPreviews(previews);
-  }, [showSendModal, cats, title, selectedCp, sendCategoryEnabled, emailGroupsConfig]);
+  }, [showSendModal, cats, title, selectedCp, sendCategoryEnabled, emailGroupsConfig, emailFooter]);
   const [notifications, setNotifications] = useState<Omit<NotificationProps, 'onDismiss'>[]>([]);
 
   const handlePreviewChange = (index: number, part: 'header' | 'footer', value: string) => {
@@ -744,7 +761,7 @@ ${emailFooter}`;
       if (!r.ok) return [];
       const data = await r.json();
       return Array.isArray(data) ? data as Supplier[] : [];
-    } catch (e) {
+    } catch {
       return [];
     }
   };
@@ -762,34 +779,16 @@ ${emailFooter}`;
 
     cpAddrAbort.current?.abort();
     cpAddrAbort.current = new AbortController();
-    setCpAddrLoading(true);
+ setAddrLoading(true);
     try {
       const url = `${API_BASE_URL}/api/v1/suggest/address?q=${encodeURIComponent(q)}&count=5`;
       const r = await fetch(url, { credentials: 'include', signal: cpAddrAbort.current.signal });
       const data = await r.json();
       const list: DaDataAddr[] = (data?.suggestions ?? []).map((s: any) => ({ value: s.value, unrestricted_value: s.unrestricted_value }));
       addrCache.current.set(q, list); // Пополняем общий кэш
-      return list;
-    } catch { return []; } 
-    finally { setCpAddrLoading(false); }
-  };
-
-  // ------- DaData helpers для поиска организаций ------- 
-  const fetchPartySuggest = async (q: string) => {
-    cpDadataAbort.current?.abort();
-    cpDadataAbort.current = new AbortController();
-    setCpDadataLoading(true);
-    try {
-      const url = `${API_BASE_URL}/api/v1/suggest/party?q=${encodeURIComponent(q)}&count=5`;
-      const r = await fetch(url, { credentials: 'include', signal: cpDadataAbort.current.signal });
-      if (!r.ok) return [];
-      const data = await r.json();
-      return (data?.suggestions ?? []) as DaDataParty[];
-    } catch {
-      return [];
-    } finally {
-      setCpDadataLoading(false);
-    }
+ return list;
+    } catch { return []; }
+    finally { setAddrLoading(false); }
   };
 
   useEffect(() => {
@@ -804,7 +803,7 @@ ${emailFooter}`;
       const finalMap: Record<string, Supplier[]> = {};
       cats.forEach(cat => {
         finalMap[cat.id] = suppliersMap[cat.title.trim()] || [];
-      });
+      }); // This variable is not used, but the logic might be useful later.
       setSendCategoryOptions(finalMap);
     };
 
@@ -812,6 +811,10 @@ ${emailFooter}`;
       fetchAllCategorySuppliers();
     }
   }, [cats]);
+
+  // This state and its setter are created but not used. It might be for future use.
+  const [, setSendCategoryOptions] = useState<Record<string, Supplier[]>>({});
+
   useEffect(() => {
     const q = addrQuery.trim();
     if (!addrFocus || q.length < 3) { if (!addrFocus) setAddrSugg([]); return; }
@@ -830,7 +833,7 @@ ${emailFooter}`;
       if (q.length >= 3) {
         fetchSuggest(q).then(setAddrSugg);
       }
-    }
+    } // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addrFocus]);
 
   // ------- CP Address suggestions (debounce 100ms) ------- 
@@ -988,7 +991,7 @@ ${emailFooter}`;
     }
 
     let i = 0;
-    let formattedValue = matrix.replace(/./g, (char) => {
+    const formattedValue = matrix.replace(/./g, (char) => {
       if (/[_\d]/.test(char) && i < digits.length) {
         return digits[i++];
       } else if (i >= digits.length) {
@@ -1028,7 +1031,7 @@ ${emailFooter}`;
       const createdCp: Counterparty = await res.json();
       setCounterparties(prev => [...prev, createdCp]);
       setSelectedCp(createdCp);
-      setShowCpCreateModal(false);
+      setShowCpCreateModal(false); // This variable is not used, but the logic might be useful later.
       setNewCpForm({}); // Сбрасываем форму после успеха
       setCpSearchQuery('');
       setCpSearchError('');
@@ -1036,6 +1039,8 @@ ${emailFooter}`;
       addNotification({ type: 'error', title: 'Ошибка создания контрагента', message: e.message });
     }
   };
+  // This state and its setter are created but not used. It might be for future use.
+  const [, setCpSearchError] = useState('');
 
   const handlePickDadataParty = (party: DaDataParty) => {
     // Заполняем всю форму данными из DaData
@@ -1217,6 +1222,7 @@ ${emailFooter}`;
       }
       const savedRequest: Request = await r.json();
       addNotification({ type: 'success', title: 'Заявка сохранена'});
+      setActiveTab('list');
       
       return savedRequest; // Возвращаем сохраненную заявку
     } catch (e:any) {
@@ -1390,7 +1396,7 @@ ${emailFooter}`;
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Мои заявки
+                Список заявок
               </button>
             </nav>
           </div>
@@ -1532,7 +1538,7 @@ ${emailFooter}`;
 
                     <div className="mt-4 flex flex-wrap gap-3">
                       <button type="button" onClick={saveRequest} disabled={isSubmitting} className={`bg-amber-600 text-white ${clsBtn} disabled:opacity-50`}>{isSubmitting ? 'Сохранение...' : 'Сохранить'}</button>
-                      <button type="button" onClick={handleOpenSendModal} disabled={isSubmitting || allSavedItems.length === 0} className={`border border-amber-600 text-amber-700 ${clsBtn} disabled:opacity-50`}>Разослать</button>
+                      {/* <button type="button" onClick={handleOpenSendModal} disabled={isSubmitting || allSavedItems.length === 0} className={`border border-amber-600 text-amber-700 ${clsBtn} disabled:opacity-50`}>Разослать</button> */}
                     </div>
                   </>
                 )}
@@ -1555,7 +1561,6 @@ ${emailFooter}`;
                         onFocus={() => setCpDadataFocus(true)}
                         onBlur={() => setTimeout(() => setCpDadataFocus(false), 200)}
                       />
-                      {cpDadataLoading && <div className="text-xs text-gray-500 mt-1">Поиск...</div>}
                       {cpDadataFocus && cpDadataSugg.length > 0 && (
                         <div className="absolute z-40 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-200 rounded-md shadow-lg">
                           {cpDadataSugg.map((p, i) => (
@@ -2116,8 +2121,8 @@ ${emailFooter}`;
                 </div>
               )}
             </div>
-          )}
-          {activeTab === 'list' && <RequestsList />}
+          )} 
+          {activeTab === 'list' && <RequestsList onSwitchToCreate={() => setActiveTab('create')} />}
         </div>
       </main>
 

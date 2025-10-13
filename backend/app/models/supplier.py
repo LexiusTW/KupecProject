@@ -6,7 +6,7 @@ class Supplier(Base):
     __tablename__ = "suppliers"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False) # Связь с покупателем, который добавил поставщика
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False) # Связь с покупателем, который добавил поставщика
 
     short_name = Column(String(255), nullable=False)        # Краткое наименование юр. лица
     legal_address = Column(String(500), nullable=False)     # Юридический адрес
@@ -20,4 +20,4 @@ class Supplier(Base):
     email = Column(String, nullable=False)                  # Почта
     category = Column(JSON, nullable=False)          # Категория поставщика (именительный падеж)
 
-    user = relationship("User")
+    user = relationship("User", back_populates="suppliers")

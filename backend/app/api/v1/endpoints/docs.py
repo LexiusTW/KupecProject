@@ -10,8 +10,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.organization import Organization
 from app.api.deps import get_db, get_current_user
 from app.models.user import User
+from app.schemas.excel import FileListResponse
 
 router = APIRouter(prefix="/docs", tags=["docs"])
 
@@ -32,8 +34,13 @@ async def upload_logo(
 ):
     if file.content_type not in ALLOWED_IMG:
         raise HTTPException(status_code=415, detail="Поддерживаются только PNG/JPEG/WEBP/SVG")
-    if not user.inn:
-        raise HTTPException(status_code=400, detail="У пользователя не заполнен ИНН")
+    
+    # Загружаем организацию, чтобы получить ИНН и сохранить logo_url
+    organization = await db.get(Organization, user.organization_id)
+    if not organization:
+        raise HTTPException(status_code=404, detail="Организация пользователя не найдена")
+    if not organization.inn:
+        raise HTTPException(status_code=400, detail="У организации не заполнен ИНН")
 
     LOGO_DIR.mkdir(parents=True, exist_ok=True)
     ext = {
@@ -43,19 +50,16 @@ async def upload_logo(
         "image/svg+xml": ".svg",
     }.get(file.content_type, ".png")
 
-    filename = f"logo_{user.inn}{ext}"
+    filename = f"logo_{organization.inn}{ext}"
     dest_path = LOGO_DIR / filename
 
     with dest_path.open("wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    user = await db.get(User, user.id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    user.logo_url = f"/static/logos/{filename}"
+    organization.logo_url = f"/static/logos/{filename}"
     await db.commit()
 
-    return {"logo_url": user.logo_url}
+    return {"logo_url": organization.logo_url}
 
 
 class DocItem(BaseModel):
@@ -181,20 +185,21 @@ async def generate_document(
     if payload.variables:
         ctx.update(payload.variables)
 
-    db_user = await db.get(User, user.id)
-    if not db_user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    organization = await db.get(Organization, user.organization_id)
+    if not organization:
+        raise HTTPException(status_code=404, detail="Организация пользователя не найдена")
+
     ctx.update({
-        "org_login": db_user.login,
-        "org_email": db_user.email,
-        "org_inn": db_user.inn or "",
-        "org_director": db_user.director_name or "",
-        "org_legal_address": db_user.legal_address or "",
-        "org_ogrn": db_user.ogrn or "",
-        "org_kpp": db_user.kpp or "",
-        "org_okpo": db_user.okpo or "",
-        "org_okato_oktmo": db_user.okato_oktmo or "",
-        "logo_url": db_user.logo_url or "",
+        "org_login": user.login,
+        "org_email": user.email,
+        "org_inn": organization.inn or "",
+        "org_director": organization.director_name or "",
+        "org_legal_address": organization.legal_address or "",
+        "org_ogrn": organization.ogrn or "",
+        "org_kpp": organization.kpp or "",
+        "org_okpo": organization.okpo or "",
+        "org_okato_oktmo": organization.okato_oktmo or "",
+        "logo_url": organization.logo_url or "",
         "doc_number": number,
         "doc_date": datetime.now().strftime("%d.%m.%Y"),
     })
@@ -220,3 +225,44 @@ async def generate_document(
     else:
         return FileResponse(str(out_docx), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", filename=out_docx.name)
 
+
+@router.get("/generated", response_model=FileListResponse)
+async def list_generated_documents(
+    user: User = Depends(get_current_user),
+):
+    """Возвращает список сгенерированных документов из папки excel_outgoing."""
+    if not OUT_DIR.exists() or not OUT_DIR.is_dir():
+        return FileListResponse(directory=str(OUT_DIR), files=[], total_count=0)
+
+    try:
+        # Получаем список файлов, отсортированный по времени изменения (новые вверху)
+        files = sorted(
+            (f for f in OUT_DIR.iterdir() if f.is_file()),
+            key=lambda f: f.stat().st_mtime,
+            reverse=True
+        )
+        filenames = [f.name for f in files]
+        return FileListResponse(directory=str(OUT_DIR.name), files=filenames, total_count=len(filenames))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при чтении директории: {e}"
+        )
+
+
+@router.get("/download/{filename}")
+async def download_generated_document(
+    filename: str,
+    user: User = Depends(get_current_user),
+):
+    """Скачивание сгенерированного документа по имени файла."""
+    file_path = (OUT_DIR / filename).resolve()
+
+    # Проверка безопасности, чтобы нельзя было выйти за пределы OUT_DIR
+    if not str(file_path).startswith(str(OUT_DIR.resolve())):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Доступ запрещен")
+
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Файл не найден")
+
+    return FileResponse(path=file_path, filename=filename)

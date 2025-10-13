@@ -6,18 +6,15 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session as SyncSession
 from datetime import datetime, timezone
+
 from app.api import deps
 from app.core.config import settings
 from app.core.security import create_access_token, create_refresh_token
-from app.schemas.user import UserCreate, UserSchema, Role
-from app.schemas.token import TokenPayload, AccessToken
-from app.crud.user import (
-    get_by_login as crud_get_by_login,
-    get_by_email as crud_get_by_email,
-    create_user as crud_create_user,
-    authenticate as crud_authenticate,
-    get_by_id_with_role as crud_get_by_id_with_role,
-)
+from app.schemas.user import UserCreate, UserBase, Role
+from app.schemas.token import TokenPayload, AccessToken # Добавлен AccessToken
+from app.crud import user as crud_user
+from app.crud import organization as crud_organization
+from app.models.user import User
 
 router = APIRouter()
 
@@ -44,29 +41,34 @@ def _role_for_token(raw_role: Optional[str], user_obj) -> str:
     return raw_role.lower() if raw_role else ""
 
 
-@router.post("/register", response_model=UserSchema, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=UserBase, status_code=status.HTTP_201_CREATED)
 async def register(
     user_in: UserCreate,
     response: Response,
     db: AsyncSession = Depends(deps.get_db),
 ):
-    """Регистрация пользователя + мгновенная установка access/refresh токенов в куки."""
-    existing = {"user_login": None, "user_email": None}
-
+    existing = {}
     def _sync_get(sdb: SyncSession):
-        existing["user_login"] = crud_get_by_login(sdb, login=user_in.login)
-        existing["user_email"] = crud_get_by_email(sdb, email=user_in.email)
+        existing["user_login"] = crud_user.get_by_login(sdb, login=user_in.login)
+        existing["user_email"] = crud_user.get_by_email(sdb, email=user_in.email)
+        org = crud_organization.get_by_inn(sdb, inn=user_in.organization.inn)
+        if org and user_in.role == Role.DIRECTOR:
+            director = sdb.query(User).filter(User.organization_id == org.id, User.role == Role.DIRECTOR.value).first()
+            if director:
+                existing['director_exists'] = True
 
     await db.run_sync(_sync_get)
-    if existing["user_login"]:
-        raise HTTPException(status_code=400, detail="Логин уже занят")
-    if existing["user_email"]:
-        raise HTTPException(status_code=400, detail="Email уже занят")
 
-    created = {"user": None}
+    if existing.get("user_login"):
+        raise HTTPException(status_code=400, detail="Этот логин уже занят")
+    if existing.get("user_email"):
+        raise HTTPException(status_code=400, detail="Этот email уже занят")
+    if existing.get('director_exists'):
+        raise HTTPException(status_code=400, detail="Директор для этой организации уже зарегистрирован")
 
+    created = {}
     def _sync_create(sdb: SyncSession):
-        created["user"] = crud_create_user(sdb, obj_in=user_in)
+        created["user"] = crud_user.create_user(sdb, obj_in=user_in)
 
     await db.run_sync(_sync_create)
     user = created["user"]
@@ -91,11 +93,10 @@ async def login(
     response: Response,
     db: AsyncSession = Depends(deps.get_db),
 ):
-
     result = {"user": None}
 
     def _sync_auth(sdb: SyncSession):
-        result["user"] = crud_authenticate(
+        result["user"] = crud_user.authenticate(
             sdb,
             login=creds.login,
             password=creds.password,
@@ -124,7 +125,6 @@ async def refresh_access_token(
     response: Response,
     db: AsyncSession = Depends(deps.get_db),
 ):
-    """Обновление access-токена. Refresh читаем из HttpOnly cookie."""
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет refresh токена")
@@ -144,13 +144,16 @@ async def refresh_access_token(
     except (ValidationError, Exception):
         raise credentials_exception
 
-    existence = {"user": None}
-
+    holder = {"user": None}
     def _sync_get(sdb: SyncSession):
-        existence["user"] = crud_get_by_id_with_role(sdb, role=role, user_id=user_id)
+        user = crud_user.get_by_id(sdb, user_id=user_id)
+        if user and user.role.lower() == role:
+            holder["user"] = user
 
     await db.run_sync(_sync_get)
-    if not existence["user"]:
+    user = holder["user"]
+
+    if not user:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Пользователь не найден")
 
     new_access_token = create_access_token(data={"sub": str(user_id), "role": role})
@@ -161,9 +164,8 @@ async def refresh_access_token(
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(response: Response):
-    """Чистим обе куки."""
-    _delete_cookie(response, key="access_token")
     _delete_cookie(response, key="refresh_token")
+    _delete_cookie(response, key="access_token")
     return {"message": "ok"}
 
 
@@ -172,7 +174,6 @@ async def verify_access_token(
     request: Request,
     db: AsyncSession = Depends(deps.get_db),
 ):
-    """Проверка валидности access-токена из HttpOnly cookie"""
     access_token = request.cookies.get("access_token")
     if not access_token:
         raise HTTPException(
@@ -181,14 +182,12 @@ async def verify_access_token(
         )
 
     try:
-        # Декодируем токен
         payload = jwt.decode(
             access_token,
             settings.SECRET_KEY,
             algorithms=[settings.ALGORITHM],
         )
 
-        # Проверка структуры
         sub = payload.get("sub")
         role = payload.get("role")
         valid_roles = [r.value.lower() for r in Role]
@@ -198,17 +197,15 @@ async def verify_access_token(
                 detail="Неверная структура токена",
             )
 
-        # Проверим пользователя в базе
         user_id = int(sub)
-        existence = {"user": None}
-
+        holder = {"user": None}
         def _sync_get(sdb: SyncSession):
-            existence["user"] = crud_get_by_id_with_role(
-                sdb, role=role, user_id=user_id
-            )
+            user = crud_user.get_by_id(sdb, user_id=user_id)
+            if user and user.role.lower() == role:
+                holder["user"] = user
 
         await db.run_sync(_sync_get)
-        if not existence["user"]:
+        if not holder["user"]:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Пользователь не найден",

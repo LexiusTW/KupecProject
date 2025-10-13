@@ -3,22 +3,31 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-const API_BASE_URL = 'https://kupecbek.cloudpub.ru';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+type UserRole = 'Директор' | 'РОП' | 'Менеджер' | 'Снабженец' | 'Продавец';
+
+interface User {
+  id: number;
+  login: string;
+  role: UserRole;
+}
 
 export default function Header({ showNav = true }: { showNav?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
-  const isAuthPage = pathname?.startsWith('/login') || pathname?.startsWith('/register');
+  const isAuthPage = pathname?.startsWith('/auth');
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
     setIsLoggingOut(true);
     // Мгновенно уводим на /login, а запрос на logout отправляем асинхронно
-    router.push('/login');
+    router.push('/auth');
     try {
       fetch(`${API_BASE_URL}/api/v1/logout`, {
         method: 'POST',
@@ -29,6 +38,25 @@ export default function Header({ showNav = true }: { showNav?: boolean }) {
       setIsLoggingOut(false);
     }
   };
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/users/me`, {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const userData = await response.json();
+          setUser(userData);
+        } else {
+          setUser(null);
+        }
+      } catch {
+        setUser(null);
+      }
+    };
+    fetchUser();
+  }, []);
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-200">
@@ -41,6 +69,8 @@ export default function Header({ showNav = true }: { showNav?: boolean }) {
             fill
             className="object-contain"
             priority
+            draggable="false"
+            onDragStart={(e) => e.preventDefault()}
           />
         </div>
 
@@ -48,6 +78,11 @@ export default function Header({ showNav = true }: { showNav?: boolean }) {
         {showNav && !isAuthPage ? (
           <nav className="flex items-center space-x-8">
             
+            {user && (user.role === 'Директор' || user.role === 'РОП') && (
+              <Link href="/users" className="text-gray-700 hover:text-amber-600 transition-colors">
+                Управление
+              </Link>
+            )}
 
             <Link href="/account" className="text-gray-700 hover:text-amber-600 transition-colors">
               Личный кабинет

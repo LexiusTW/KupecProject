@@ -1,14 +1,14 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
 import AuthForm from '../components/AuthForm';
 import RegisterForm from '../components/RegisterForm';
-import Footer from '../components/Footer';
+
 import Header from '../components/Header';
 
 type Tab = 'login' | 'register';
 
-export default function AuthPage() {
+function AuthPageContent() {
   const [activeTab, setActiveTab] = useState<Tab>('login');
   const [height, setHeight] = useState<number | string>('auto');
   const formWrapperRef = useRef<HTMLDivElement>(null);
@@ -84,7 +84,15 @@ export default function AuthPage() {
           </div>
         </div>
       </main>
-      <Footer />
+
     </div>
   );
+}
+
+export default function AuthPage() {
+    return (
+        <Suspense fallback={<div>Loading...</div>}>
+            <AuthPageContent />
+        </Suspense>
+    )
 }
