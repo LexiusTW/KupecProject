@@ -491,7 +491,7 @@ export default function RequestPage() {
     if (!cpForm.phone) errors.phone = 'Обязательное поле';
     if (!cpForm.email) {
       errors.email = 'Обязательное поле';
-    } else if (!/^[^@\s]+\.[^@\s]+\.[^@\s]+$/.test(cpForm.email)) {
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cpForm.email)) {
       errors.email = 'Некорректный email';
     }
     if (cpForm.bank_account && !/^\d{20}$/.test(cpForm.bank_account)) errors.bank_account = 'Р/с должен состоять из 20 цифр';

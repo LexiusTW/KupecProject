@@ -262,12 +262,14 @@ export default function RequestDetailPage() {
     }
   };
 
-  const handleChangeStatus = async (newStatus: Status) => {
+  const handleChangeStatus = async (newStatus: Status, markups?: any) => {
     if (!request || isSubmitting || (newStatus === 'Наценка' && !allPricesSelected)) return;
 
     setIsSubmitting(true);
     try {
-        if (newStatus === 'Наценка') {
+        let updatedRequestData = request;
+
+        if (newStatus === 'Наценка' || (newStatus === 'КП отправлено' && markups)) {
             const offersToSave = [];
             for (const categoryName of Object.keys(categorizedItems)) {
                 const suppliersKey = `suppliers_data_${id}_${categoryName.replace(/\s+/g, '_')}`;
@@ -287,17 +289,46 @@ export default function RequestDetailPage() {
                         const item = request.items.find(i => i.id === itemId);
 
                         if (supplier && item) {
-                            offersToSave.push({
-                                request_item_id: item.id,
-                                supplier_name: supplier.name,
-                                price: supplier.prices[item.id],
-                                delivery_included: supplier.deliveryIncluded,
-                                delivery_time: supplier.deliveryTime,
-                                vat_included: supplier.vatIncluded,
-                                comment: supplier.comment,
-                                company_type: supplier.companyType,
-                                payment_type: supplier.paymentType,
-                            });
+                            const price = supplier.prices[item.id];
+
+                            if (price !== null && price !== undefined) {
+                                let markupInRubles = 0;
+                                if (markups) {
+                                    const itemMarkup = markups.items[itemId];
+                                    if (itemMarkup !== undefined && itemMarkup !== null && itemMarkup > 0) {
+                                        markupInRubles = itemMarkup;
+                                    } else {
+                                        const supplierMarkup = markups.suppliers[supplier.name];
+                                        if (supplierMarkup && supplierMarkup.value > 0) {
+                                            if (supplierMarkup.type === 'percentage') {
+                                                markupInRubles = price * (supplierMarkup.value / 100);
+                                            } else {
+                                                markupInRubles = supplierMarkup.value;
+                                            }
+                                        } else {
+                                            const globalMarkup = markups.global;
+                                            if (globalMarkup && globalMarkup.value > 0) {
+                                                if (globalMarkup.type === 'percentage') {
+                                                    markupInRubles = price * (globalMarkup.value / 100);
+                                                } // Global fixed markup is not saved per item
+                                            }
+                                        }
+                                    }
+                                }
+
+                                offersToSave.push({
+                                    request_item_id: item.id,
+                                    supplier_name: supplier.name,
+                                    price: price,
+                                    markup: markupInRubles,
+                                    delivery_included: supplier.deliveryIncluded,
+                                    delivery_time: supplier.deliveryTime,
+                                    vat_included: supplier.vatIncluded,
+                                    comment: supplier.comment,
+                                    company_type: supplier.companyType,
+                                    payment_type: supplier.paymentType,
+                                });
+                            }
                         }
                     }
                 }
@@ -314,6 +345,8 @@ export default function RequestDetailPage() {
                 const err = await saveOffersRes.json().catch(() => ({}));
                 throw new Error(err.detail || 'Не удалось сохранить выбранные предложения');
             }
+            updatedRequestData = await saveOffersRes.json();
+            setRequest(updatedRequestData);
         }
 
         const statusUpdateRes = await fetch(`${API_BASE_URL}/api/v1/requests/${id}/status`, {
@@ -328,9 +361,9 @@ export default function RequestDetailPage() {
             throw new Error(err.detail || 'Не удалось изменить статус');
         }
 
-        const updatedRequest = await statusUpdateRes.json();
-        setRequest(updatedRequest);
-        setViewingStatus(updatedRequest.status as Status);
+        const finalUpdatedRequest = await statusUpdateRes.json();
+        setRequest(finalUpdatedRequest);
+        setViewingStatus(finalUpdatedRequest.status as Status);
 
     } catch (e) {
         console.error(e);
@@ -581,11 +614,19 @@ export default function RequestDetailPage() {
 interface MarkupViewProps {
   request: RequestDetails;
   isSubmitting: boolean;
-  onStatusChange: (newStatus: Status) => void;
+  onStatusChange: (newStatus: Status, markups?: any) => void;
 }
 
 const MarkupView: React.FC<MarkupViewProps> = ({ request, isSubmitting, onStatusChange }) => {
-  const [markup, setMarkup] = useState<{ type: 'percentage' | 'fixed', value: number }>({ type: 'percentage', value: 10 }); // Default 10% markup
+  const [markups, setMarkups] = useState<{
+    global: { type: 'percentage' | 'fixed', value: number };
+    suppliers: Record<string, { type: 'percentage' | 'fixed', value: number }>;
+    items: Record<number, number>; // Ruble value
+  }>({
+    global: { type: 'percentage', value: 10 },
+    suppliers: {},
+    items: {},
+  });
 
   // This is a simplified placeholder. 
   // In a real implementation, you would have more complex state management for per-item/per-supplier markups.
@@ -598,17 +639,17 @@ const MarkupView: React.FC<MarkupViewProps> = ({ request, isSubmitting, onStatus
         <h3 className="text-lg font-semibold">Общая наценка на сделку</h3>
         <select 
           className="p-2 border rounded-md bg-white"
-          value={markup.type}
-          onChange={e => setMarkup(prev => ({ ...prev, type: e.target.value as 'percentage' | 'fixed' }))}
+          value={markups.global.type}
+          onChange={e => setMarkups(prev => ({ ...prev, global: { ...prev.global, type: e.target.value as 'percentage' | 'fixed' } }))}
         >
           <option value="percentage">Процент (%)</option>
-          {/* <option value="fixed">Фиксированная (₽)</option> */}
+          <option value="fixed">Фиксированная (₽)</option>
         </select>
         <input 
           type="number"
           className="p-2 border rounded-md w-24"
-          value={markup.value}
-          onChange={e => setMarkup(prev => ({ ...prev, value: parseFloat(e.target.value) || 0 }))}
+          value={markups.global.value}
+          onChange={e => setMarkups(prev => ({ ...prev, global: { ...prev.global, value: parseFloat(e.target.value) || 0 } }))}
         />
       </div>
 
@@ -618,12 +659,13 @@ const MarkupView: React.FC<MarkupViewProps> = ({ request, isSubmitting, onStatus
         selectedOffers={request.selected_offers || []}
         onStatusChange={() => {}} // Status changes are not handled here
         isMarkupView={true}
-        markup={markup}
+        markups={markups}
+        onMarkupsChange={setMarkups}
       />
 
       <div className="flex justify-end mt-6">
         <button
-          onClick={() => onStatusChange('КП отправлено')}
+          onClick={() => onStatusChange('КП отправлено', markups)}
           disabled={isSubmitting}
           className="bg-green-600 text-white px-6 py-3 rounded-lg shadow hover:bg-green-700 transition-colors disabled:bg-gray-400"
         >
@@ -1159,6 +1201,7 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
         onPaste={handlePaste}
         onCopy={handleCopy}
         onCut={handleCut}
+        onKeyDown={handleKeyDown}
         className="bg-white rounded-xl shadow-md p-4 outline-none relative"
         onClick={() => contextMenu && setContextMenu(null)}
     >

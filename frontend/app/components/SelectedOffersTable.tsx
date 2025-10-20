@@ -28,14 +28,22 @@ type SelectedOffer = {
   company_type: 'end_user' | 'trading' | '';
   payment_type: 'immediate' | 'deferred' | 'installment' | 'partial_postpayment' | '';
   supplier_status: string;
+  markup?: number;
+};
+
+type Markups = {
+  global: { type: 'percentage' | 'fixed', value: number };
+  suppliers: Record<string, { type: 'percentage' | 'fixed', value: number }>;
+  items: Record<number, number>;
 };
 
 interface SelectedOffersTableProps {
   items: RequestItem[];
   selectedOffers: SelectedOffer[];
   onStatusChange: (supplierName: string, status: string) => void;
-  isMarkupView?: boolean; // New prop to indicate if the table is in markup view
-  markup?: { type: 'percentage' | 'fixed', value: number }; // New prop for markup data
+  isMarkupView?: boolean;
+  markups?: Markups;
+  onMarkupsChange?: React.Dispatch<React.SetStateAction<Markups>>;
 }
 
 const formatMoney = (v?: number | null) =>
@@ -54,7 +62,8 @@ const SelectedOffersTable: React.FC<SelectedOffersTableProps> = ({
   selectedOffers, 
   onStatusChange, 
   isMarkupView = false,
-  markup = { type: 'percentage', value: 0 },
+  markups,
+  onMarkupsChange,
 }) => {
   const offersBySupplier = selectedOffers.reduce((acc, offer) => {
     if (!acc[offer.supplier_name]) {
@@ -66,14 +75,66 @@ const SelectedOffersTable: React.FC<SelectedOffersTableProps> = ({
 
   const getItemById = (id: number) => items.find(item => item.id === id);
 
-  const calculatePriceWithMarkup = (price: number) => {
-    if (!isMarkupView || !markup) return price;
-    if (markup.type === 'percentage') {
-      return price * (1 + markup.value / 100);
+  const calculatePriceWithMarkup = (price: number, itemId: number, supplierName: string) => {
+    if (!isMarkupView || !markups) {
+        const offer = selectedOffers.find(o => o.request_item_id === itemId && o.supplier_name === supplierName);
+        return price + (offer?.markup || 0);
     }
-    // In a real scenario, you might handle fixed markup differently, e.g., distribute it
-    return price; 
+
+    const itemMarkup = markups.items[itemId];
+    if (itemMarkup !== undefined && itemMarkup !== null && itemMarkup > 0) {
+      return price + itemMarkup;
+    }
+
+    const supplierMarkup = markups.suppliers[supplierName];
+    if (supplierMarkup && supplierMarkup.value > 0) {
+      if (supplierMarkup.type === 'percentage') {
+        return price * (1 + supplierMarkup.value / 100);
+      }
+      return price + supplierMarkup.value;
+    }
+
+    if (markups.global.type === 'percentage' && markups.global.value > 0) {
+      return price * (1 + markups.global.value / 100);
+    }
+    
+    return price;
   };
+
+  const handleMarkupChange = (
+    key: 'items' | 'suppliers',
+    identifier: number | string,
+    value: any
+) => {
+    if (!onMarkupsChange) return;
+
+    onMarkupsChange(prev => {
+        if (key === 'items') {
+            return {
+                ...prev,
+                items: {
+                    ...prev.items,
+                    [identifier]: value,
+                },
+            };
+        }
+        if (key === 'suppliers') {
+            const supplierName = identifier as string;
+            return {
+                ...prev,
+                suppliers: {
+                    ...prev.suppliers,
+                    [supplierName]: {
+                        ...(prev.suppliers?.[supplierName] || { type: 'percentage', value: 0 }),
+                        ...value,
+                    },
+                },
+            };
+        }
+        return prev;
+    });
+};
+
 
   return (
     <div className="bg-white rounded-xl shadow-md p-6 space-y-6">
@@ -93,14 +154,37 @@ const SelectedOffersTable: React.FC<SelectedOffersTableProps> = ({
 
           const totalWithMarkup = offers.reduce((sum, offer) => {
             const item = getItemById(offer.request_item_id);
-            const markedUpPrice = calculatePriceWithMarkup(offer.price);
+            const markedUpPrice = calculatePriceWithMarkup(offer.price, offer.request_item_id, supplierName);
             return sum + (markedUpPrice * (item?.quantity || 0));
           }, 0);
+          
+          const finalTotal = (markups && markups.global.type === 'fixed' && markups.global.value > 0) 
+            ? totalWithMarkup + markups.global.value
+            : totalWithMarkup;
 
           return (
             <div key={supplierName} className="border border-gray-200 rounded-lg overflow-hidden">
               <div className="bg-gray-50 p-4">
                 <h3 className="font-bold text-lg text-gray-900">{supplierName}</h3>
+                {isMarkupView && onMarkupsChange && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <h4 className="text-sm font-semibold">Наценка на поставщика:</h4>
+                    <select 
+                      className="p-1 border rounded-md bg-white text-sm"
+                      value={markups?.suppliers[supplierName]?.type || 'percentage'}
+                      onChange={e => handleMarkupChange('suppliers', supplierName, { type: e.target.value as 'percentage' | 'fixed' })}
+                    >
+                      <option value="percentage">%</option>
+                      <option value="fixed">₽</option>
+                    </select>
+                    <input 
+                      type="number"
+                      className="p-1 border rounded-md w-20 text-sm"
+                      value={markups?.suppliers[supplierName]?.value || ''}
+                      onChange={e => handleMarkupChange('suppliers', supplierName, { value: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                )}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 text-sm mt-2 text-gray-600">
                     <p><span className="font-medium">Доставка:</span> {firstOffer.delivery_included ? 'Включена' : 'Не включена'}</p>
                     <p><span className="font-medium">Срок:</span> {firstOffer.delivery_time || '—'}</p>
@@ -116,33 +200,50 @@ const SelectedOffersTable: React.FC<SelectedOffersTableProps> = ({
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Наименование</th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Кол-во</th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Цена за ед.</th>
-                    {isMarkupView && <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Цена с наценкой</th>}
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Наценка, ₽</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Цена с наценкой</th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Сумма</th>
-                    {isMarkupView && <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Сумма с наценкой</th>}
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Сумма с наценкой</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {offers.map(offer => {
                     const item = getItemById(offer.request_item_id);
-                    const priceWithMarkup = calculatePriceWithMarkup(offer.price);
+                    const priceWithMarkup = calculatePriceWithMarkup(offer.price, offer.request_item_id, supplierName);
+                    const markupValue = priceWithMarkup - offer.price;
+
                     return (
                       <tr key={offer.request_item_id}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{item?.displayName || item?.name || 'Неизвестно'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item?.quantity} {item?.unit}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatMoney(offer.price)}</td>
-                        {isMarkupView && <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-medium">{formatMoney(priceWithMarkup)}</td>}
+                        
+                        {isMarkupView && onMarkupsChange ? (
+                            <td className="px-6 py-4 whitespace-nowrap">
+                                <input 
+                                    type="number"
+                                    className="p-1 border rounded-md w-20 text-sm"
+                                    placeholder="₽"
+                                    value={markups?.items[offer.request_item_id] || ''}
+                                    onChange={e => handleMarkupChange('items', offer.request_item_id, parseFloat(e.target.value) || 0)}
+                                />
+                            </td>
+                        ) : (
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatMoney(markupValue)}</td>
+                        )}
+
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-medium">{formatMoney(priceWithMarkup)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 font-medium">{formatMoney(offer.price * (item?.quantity || 0))}</td>
-                        {isMarkupView && <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-bold">{formatMoney(priceWithMarkup * (item?.quantity || 0))}</td>}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-bold">{formatMoney(priceWithMarkup * (item?.quantity || 0))}</td>
                       </tr>
                     );
                   })}
                 </tbody>
                 <tfoot className="bg-gray-50">
                     <tr>
-                        <td colSpan={isMarkupView ? 2 : 2} className="px-6 py-3 text-right text-sm font-bold text-gray-800">Итого:</td>
+                        <td colSpan={5} className="px-6 py-3 text-right text-sm font-bold text-gray-800">Итого:</td>
                         <td className="px-6 py-3 text-left text-sm font-bold text-gray-900">{formatMoney(total)}</td>
-                        {isMarkupView && <td className="px-6 py-3 text-left text-sm font-bold text-blue-700">{formatMoney(totalWithMarkup)}</td>}
-                        {isMarkupView && <td colSpan={2}></td>} 
+                        <td className="px-6 py-3 text-left text-sm font-bold text-blue-700">{formatMoney(finalTotal)}</td>
                     </tr>
                 </tfoot>
               </table>

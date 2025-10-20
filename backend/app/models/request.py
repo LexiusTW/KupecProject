@@ -119,6 +119,7 @@ class SelectedOffer(Base):
     # Information about the chosen supplier and price
     supplier_name = Column(String, nullable=False)
     price = Column(Float, nullable=False)
+    markup = Column(Float, nullable=True)
 
     # Additional supplier data from the frontend
     delivery_included = Column(Boolean, default=False)

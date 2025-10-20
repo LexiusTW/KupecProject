@@ -160,6 +160,7 @@ class SelectedOfferBase(BaseModel):
     request_item_id: int
     supplier_name: str
     price: float
+    markup: Optional[float] = None
     delivery_included: Optional[bool] = False
     delivery_time: Optional[str] = None
     vat_included: Optional[bool] = False
