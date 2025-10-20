@@ -8,3 +8,4 @@ from app.models.user import User
 from app.models.counterparty import Counterparty
 from app.models.offer_token import OfferToken
 from app.models.organization import Organization
+from app.models.oauth_account import OAuthAccount

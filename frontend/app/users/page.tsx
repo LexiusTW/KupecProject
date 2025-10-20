@@ -132,7 +132,7 @@ export default function UsersPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-amber-50 to-yellow-100 flex flex-col">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
         <Header />
         <main className="flex-grow container mx-auto px-4 py-8">
           <SkeletonLoader className="h-96 w-full" />
@@ -144,7 +144,7 @@ export default function UsersPage() {
 
   if (!hasAccess) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-amber-50 to-yellow-100 flex flex-col">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
         <Header />
         <main className="flex-grow container mx-auto px-4 py-8">
           <div className="bg-white rounded-xl shadow p-8 text-center">
@@ -159,7 +159,7 @@ export default function UsersPage() {
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-br from-amber-50 to-yellow-100 flex flex-col">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
         <Header />
         <main className="flex-grow container mx-auto px-4 py-8">
           <div className="space-y-6">

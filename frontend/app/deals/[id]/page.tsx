@@ -516,7 +516,7 @@ export default function DealPage() {
   const winningOffer = request.offers.find(offer => offer.id === request.winner_offer_id);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-yellow-100 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
       <Header />
       {/* ---- Контейнер для уведомлений ---- */}
       <div className="fixed top-24 right-5 z-50 w-full max-w-sm space-y-3">

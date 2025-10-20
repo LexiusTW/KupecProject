@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, useCallback, type KeyboardEvent } from 'react';
-import Header from '../components/Header';
-import Footer from '../components/Footer';
-import SkeletonLoader from '../components/SkeletonLoader';
-import Notification, { type NotificationProps } from '../components/Notification';
+import { useParams, useRouter } from 'next/navigation';
+import Header from '@/app/components/Header';
+import Footer from '@/app/components/Footer';
+import SkeletonLoader from '@/app/components/SkeletonLoader';
+import Notification, { type NotificationProps } from '@/app/components/Notification';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -73,6 +74,18 @@ type Counterparty = {
   email?: string;
 };
 
+type RequestDetails = {
+    id: string;
+    display_id: number;
+    created_at: string;
+    status: string;
+    comment: string | null;
+    delivery_address: string | null;
+    delivery_at: string | null;
+    counterparty: { id: number; short_name: string; } | null;
+    items: SavedItem[];
+};
+
 type CounterpartyCreateForm = Partial<Omit<Counterparty, 'id'>>;
 type CounterpartyFormErrors = { [K in keyof CounterpartyCreateForm]?: string };
 
@@ -89,7 +102,6 @@ type DaDataParty = {
 };
 type DaDataAddr = { value: string; unrestricted_value: string; };
 type HeaderErrors = { title?: string; deliveryAt?: string; address?: string; counterparty?: string; };
-type RequestRow = { id: string; display_id: string; created_at: string; status: string; delivery_address: string; counterparty: { id: number; short_name: string; inn: string; } | null; items: SavedItem[]; };
 
 const clsInput =
   'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100 disabled:text-gray-500';
@@ -98,149 +110,23 @@ const clsInputError =
 const clsBtn = 'px-4 py-2 rounded-md';
 const clsBtnPrimary = `bg-amber-600 text-white ${clsBtn} disabled:opacity-50`;
 
-type Tab = 'create' | 'list';
+export default function RequestEditPage() {
+  const params = useParams();
+  const router = useRouter();
+  const id = params.id as string;
 
-const RequestsList = ({ onSwitchToCreate }: { onSwitchToCreate: () => void }) => {
-    const [requestsLoading, setRequestsLoading] = useState(true);
-    const [requests, setRequests] = useState<RequestRow[]>([]);
-    const [requestsError, setRequestsError] = useState<string | null>(null);
-    const [sort, setSort] = useState<{ key: keyof RequestRow, order: 'asc' | 'desc' }>({ key: 'created_at', order: 'desc' });
-    const [filters, setFilters] = useState({ date: '', status: '', counterparty: '' });
-  
-    useEffect(() => {
-      async function fetchRequests() {
-        try {
-          setRequestsLoading(true);
-          const response = await fetch(`${API_BASE_URL}/api/v1/requests/me`, { credentials: 'include' });
-          if (!response.ok) throw new Error('Не удалось загрузить заявки');
-          const data = (await response.json()) as RequestRow[];
-          setRequests(Array.isArray(data) ? data : []);
-        } catch (e: any) {
-          setRequestsError(e.message || 'Ошибка загрузки');
-        } finally {
-          setRequestsLoading(false);
-        }
-      }
-      fetchRequests();
-    }, []);
-  
-    const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-      setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    };
-  
-    const handleSort = (key: keyof RequestRow) => {
-      setSort(prev => ({ key, order: prev.key === key && prev.order === 'asc' ? 'desc' : 'asc' }));
-    };
-  
-    const getSortIndicator = (key: string) => {
-      if (sort.key !== key) return null;
-      return sort.order === 'asc' ? ' ▲' : ' ▼';
-    };
-  
-    const getStatusBadge = (status: string) => {
-        switch (status) {
-            case 'Заявка создана': return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Заявка создана</span>;
-            case 'Поиск поставщиков': return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Поиск поставщиков</span>;
-            case 'КП отправлено': return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">КП отправлено</span>;
-            case 'Оплачено': return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Оплачено</span>;
-            case 'В доставке': return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-cyan-100 text-cyan-800">В доставке</span>;
-            case 'Сделка закрыта': return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Сделка закрыта</span>;
-            default: return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">{status}</span>;
-        }
-    };
-
-    const filteredAndSortedRequests = useMemo(() => {
-        return requests
-          .filter(req => {
-            const dateMatch = filters.date ? new Date(req.created_at).toISOString().split('T')[0] === filters.date : true;
-            const statusMatch = filters.status ? req.status === filters.status : true;
-            const cpMatch = filters.counterparty ? 
-              (req.counterparty?.short_name.toLowerCase().includes(filters.counterparty.toLowerCase()) ||
-              req.counterparty?.inn?.includes(filters.counterparty)) : true;
-            return statusMatch && cpMatch && dateMatch;
-          })
-          .sort((a, b) => {
-            let aValue: any = a[sort.key];
-            let bValue: any = b[sort.key];
-            if (sort.key === 'counterparty') {
-                aValue = a.counterparty?.short_name || '';
-                bValue = b.counterparty?.short_name || '';
-            }
-            if (aValue < bValue) return sort.order === 'asc' ? -1 : 1;
-            if (aValue > bValue) return sort.order === 'asc' ? 1 : -1;
-            return 0;
-          });
-      }, [requests, filters, sort]);
-
-    if (requestsLoading) return <div className="bg-white rounded-xl shadow p-6"><SkeletonLoader className="h-40 w-full" /></div>;
-    if (requestsError) return <div className="bg-white rounded-xl shadow p-6 text-red-600">{requestsError}</div>;
-    if (requests.length === 0) return (
-        <div className="bg-white rounded-xl shadow p-6 text-center">
-            <p className="text-gray-700">У вас пока нет заявок.</p>
-            <button onClick={onSwitchToCreate} className="inline-block mt-4 border border-amber-600 text-amber-700 px-4 py-2 rounded-md hover:bg-amber-50">Оставить первую заявку</button>
-        </div>
-    );
-
-    return (
-        <div>
-            <div className="bg-white p-4 rounded-lg shadow mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <input type="date" name="date" value={filters.date} onChange={handleFilterChange} className={clsInput} />
-                    <select name="status" value={filters.status} onChange={handleFilterChange} className={clsInput}>
-                        <option value="">Все статусы</option>
-                        <option value="Заявка создана">Заявка создана</option>
-                        <option value="Поиск поставщиков">Поиск поставщиков</option>
-                        <option value="КП отправлено">КП отправлено</option>
-                        <option value="Оплачено">Оплачено</option>
-                        <option value="В доставке">В доставке</option>
-                        <option value="Сделка закрыта">Сделка закрыта</option>
-                    </select>
-                    <input type="text" name="counterparty" value={filters.counterparty} onChange={handleFilterChange} placeholder="Поиск по контрагенту..." className={clsInput} />
-                </div>
-            </div>
-            <div className="bg-white rounded-lg shadow overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            <th onClick={() => handleSort('display_id')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">№{getSortIndicator('display_id')}</th>
-                            <th onClick={() => handleSort('created_at')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Дата{getSortIndicator('created_at')}</th>
-                            <th onClick={() => handleSort('status')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Статус{getSortIndicator('status')}</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Адрес</th>
-                            <th onClick={() => handleSort('counterparty')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer">Контрагент{getSortIndicator('counterparty')}</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Позиций</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredAndSortedRequests.map((request) => (
-                            <tr key={request.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => window.location.href = `/request/${request.id}`}>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{request.display_id}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(request.created_at).toLocaleDateString('ru-RU')}</td>
-                                <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(request.status)}</td>
-                                <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={request.delivery_address}>{request.delivery_address}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{request.counterparty?.short_name || '—'}</td>
-                                <td className="px-6 py-4 text-sm text-gray-500 text-center">{request.items.length}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-};
-
-export default function RequestPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('create');
-  
   // ---------------- Header fields ----------------
-  const [title, setTitle] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('requestForm_title') || '' : ''));
-  const [deliveryAt, setDeliveryAt] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('requestForm_deliveryAt') || '' : ''));
-  const [address, setAddress] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('requestForm_address') || '' : ''));
+  const [title, setTitle] = useState('');
+  const [deliveryAt, setDeliveryAt] = useState('');
+  const [address, setAddress] = useState('');
   const [addressSugg, setAddressSugg] = useState<DaDataAddr[]>([]);
   const [addressFocus, setAddressFocus] = useState(false);
   const addressAbort = useRef<AbortController | null>(null);
   const [headerErrors, setHeaderErrors] = useState<HeaderErrors>({});
 
+  const [initialData, setInitialData] = useState<RequestDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // ---------------- Counterparty fields ----------------
   const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
@@ -263,16 +149,7 @@ export default function RequestPage() {
   const cpAddrAbort = useRef<AbortController | null>(null);
 
   // ---------------- Categories ----------------
-  const [cats, setCats] = useState<CategoryBlock[]>(() => {
-    if (typeof window === 'undefined') return [];
-    const saved = localStorage.getItem('requestForm_cats');
-    try {
-        return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-        console.error("Failed to parse cats from localStorage", e);
-        return [];
-    }
-  });
+  const [cats, setCats] = useState<CategoryBlock[]>([]);
 
   // ---------------- UI State ----------------
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -285,59 +162,71 @@ export default function RequestPage() {
 
   const removeNotification = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
 
-  // ------- Load counterparties and set selected one from localStorage ------- 
+  // ------- Load counterparties and request data ------- 
   useEffect(() => {
+    if (!id) return;
+
     const loadInitialData = async () => {
       setIsLoading(true);
       try {
-        const counterpartiesRes = await fetch(`${API_BASE_URL}/api/v1/counterparties`, { credentials: 'include' });
-        if (counterpartiesRes && counterpartiesRes.ok) {
-            const cpData: Counterparty[] = await counterpartiesRes.json();
-            setCounterparties(cpData);
+        // Fetch counterparties and request details in parallel
+        const [cpRes, reqRes] = await Promise.all([
+            fetch(`${API_BASE_URL}/api/v1/counterparties`, { credentials: 'include' }),
+            fetch(`${API_BASE_URL}/api/v1/requests/${id}`, { credentials: 'include' })
+        ]);
 
-            const savedCpId = localStorage.getItem('requestForm_selectedCpId');
-            if (savedCpId) {
-                const cp = cpData.find(c => c.id === Number(savedCpId));
-                if (cp) setSelectedCp(cp);
+        if (!cpRes.ok) throw new Error('Не удалось загрузить контрагентов');
+        const cpData: Counterparty[] = await cpRes.json();
+        setCounterparties(cpData);
+
+        if (reqRes.status === 404) throw new Error('Заявка не найдена');
+        if (!reqRes.ok) throw new Error('Ошибка загрузки данных заявки');
+        const reqData: RequestDetails = await reqRes.json();
+
+        if (reqData.status !== 'Заявка создана' && reqData.status !== 'Поиск поставщиков') {
+            addNotification({ type: 'warning', title: 'Редактирование невозможно', message: `Заявка в статусе "${reqData.status}" не может быть отредактирована.` });
+            setTimeout(() => router.push(`/request/${id}`), 3000);
+            return;
+        }
+
+        setInitialData(reqData);
+
+        // Populate form state
+        setTitle(reqData.comment || '');
+        setDeliveryAt(reqData.delivery_at ? new Date(reqData.delivery_at).toISOString().split('T')[0] : '');
+        setAddress(reqData.delivery_address || '');
+        const counterpartyId = reqData.counterparty?.id;
+        if (counterpartyId !== undefined) {
+            const currentCp = cpData.find(c => c.id === counterpartyId);
+            if (currentCp) setSelectedCp(currentCp);
+        }
+
+        const initialCats: Record<string, PositionRow[]> = {};
+        if (reqData.items && Array.isArray(reqData.items)) {
+            for (const item of reqData.items) {
+                const catTitle = item.category || 'Прочее';
+                if (!initialCats[catTitle]) {
+                    initialCats[catTitle] = [];
+                }
+                initialCats[catTitle].push({
+                    id: item.id?.toString() || makeId(),
+                    name: item.name || '',
+                    specifications: item.dims || '',
+                    unit: item.unit || 'шт.',
+                    quantity: item.quantity || ''
+                });
             }
         }
-      } catch (error) {
-        console.error("Failed to load initial data:", error);
+        setCats(Object.entries(initialCats).map(([title, items]) => ({ id: makeId(), title, items, editingTitle: false })));
+
+      } catch (e: any) {
+        setError(e.message);
       } finally {
         setIsLoading(false);
       }
     };
     loadInitialData();
-  }, []);
-
-  // ------- Save form data to localStorage on change ------- 
-  useEffect(() => {
-    localStorage.setItem('requestForm_title', title);
-  }, [title]);
-
-  useEffect(() => {
-      localStorage.setItem('requestForm_deliveryAt', deliveryAt);
-  }, [deliveryAt]);
-
-  useEffect(() => {
-      localStorage.setItem('requestForm_address', address);
-  }, [address]);
-
-  useEffect(() => {
-      if (selectedCp) {
-          localStorage.setItem('requestForm_selectedCpId', String(selectedCp.id));
-      } else {
-          localStorage.removeItem('requestForm_selectedCpId');
-      }
-  }, [selectedCp]);
-
-  useEffect(() => {
-      if (cats.length > 0) {
-          localStorage.setItem('requestForm_cats', JSON.stringify(cats));
-      } else {
-          localStorage.removeItem('requestForm_cats');
-      }
-  }, [cats]);
+  }, [id, router]);
 
 
   // ------- DaData Address Suggestions (Header) ------- 
@@ -363,7 +252,7 @@ export default function RequestPage() {
     }
   }, [address, addressFocus, fetchHeaderAddrSuggest]);
 
-  // ------- Counterparty Modal Logic (from account/page.tsx) ------- 
+  // ------- Counterparty Modal Logic ------- 
   const fetchCpPartySuggest = useCallback(async (q: string) => {
     cpDadataAbort.current?.abort();
     cpDadataAbort.current = new AbortController();
@@ -561,7 +450,6 @@ export default function RequestPage() {
       kpp: party.kpp || '',
       ogrn: party.ogrn || '',
       okpo: party.okpo || '',
-      okato: party.okato || '',
     });
     setCpDadataSugg([]);
     setCpDadataQuery('');
@@ -580,9 +468,6 @@ export default function RequestPage() {
       setShowCpModal(true);
       setEditingCpId(null);
       setCpForm({});
-      // The select value will be "__add_new__" temporarily.
-      // When the modal is closed, a re-render will happen, and React will
-      // set the value back to selectedCp?.id from the state, correcting it.
       return;
     }
     const cp = counterparties.find(c => c.id.toString() === cpId);
@@ -660,11 +545,11 @@ export default function RequestPage() {
 
     setIsSubmitting(true);
     try {
-      const itemsToSave: SavedItem[] = cats.flatMap(cat =>
+      const itemsToSave: Omit<SavedItem, 'id'>[] = cats.flatMap(cat =>
         cat.items
-          .filter(item => item.name.trim() && String(item.quantity).trim())
+          // We still filter here to create the final list, excluding completely empty rows.
+          .filter(item => item.name.trim() !== '' && String(item.quantity).trim() !== '')
           .map(item => ({
-            id: item.id,
             kind: 'generic',
             category: cat.title.trim() || 'Прочее',
             name: item.name.trim(),
@@ -676,8 +561,8 @@ export default function RequestPage() {
           }))
       );
 
-      const r = await fetch(`${API_BASE_URL}/api/v1/requests`, {
-        method: 'POST',
+      const r = await fetch(`${API_BASE_URL}/api/v1/requests/${id}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
@@ -690,21 +575,11 @@ export default function RequestPage() {
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
-        throw new Error(err.detail || 'Не удалось сохранить заявку');
+        throw new Error(err.detail || 'Не удалось обновить заявку');
       }
-      addNotification({ type: 'success', title: 'Заявка сохранена' });
-      setActiveTab('list');
-      // Clear localStorage and state
-      localStorage.removeItem('requestForm_title');
-      localStorage.removeItem('requestForm_deliveryAt');
-      localStorage.removeItem('requestForm_address');
-      localStorage.removeItem('requestForm_selectedCpId');
-      localStorage.removeItem('requestForm_cats');
-      setTitle('');
-      setDeliveryAt('');
-      setAddress('');
-      setSelectedCp(null);
-      setCats([]);
+      addNotification({ type: 'success', title: 'Заявка обновлена', message: 'Вы будете перенаправлены...' });
+      
+      setTimeout(() => router.push(`/request/${id}`), 2000);
 
     } catch (e: any) {
       addNotification({ type: 'error', title: 'Ошибка сохранения', message: e.message });
@@ -714,6 +589,16 @@ export default function RequestPage() {
   };
 
   // ---------------- Render ----------------
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <Header />
+        <main className="flex-grow container mx-auto p-8"><div className="bg-white p-8 rounded shadow text-center text-red-600">{error}</div></main>
+        <Footer />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
       <Header />
@@ -724,14 +609,7 @@ export default function RequestPage() {
           ))}
         </div>
         <div className="container mx-auto px-4 py-8">
-          <div className="border-b border-gray-200 mb-6">
-            <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-                <button onClick={() => setActiveTab('create')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'create' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>Новая заявка</button>
-                <button onClick={() => setActiveTab('list')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'list' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>Список заявок</button>
-            </nav>
-          </div>
-
-          {activeTab === 'create' && (
+            <h1 className="text-2xl font-bold text-gray-800 mb-6">Редактирование заявки №{initialData?.display_id}</h1>
             <div className="space-y-6">
               {/* ---- Шапка заявки ---- */}
               <div className="bg-white rounded-xl shadow p-5">
@@ -791,7 +669,8 @@ export default function RequestPage() {
                       </div>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-3">
-                      <button type="button" onClick={saveRequest} disabled={isSubmitting} className={clsBtnPrimary}>{isSubmitting ? 'Сохранение...' : 'Сохранить'}</button>
+                      <button type="button" onClick={saveRequest} disabled={isSubmitting} className={clsBtnPrimary}>{isSubmitting ? 'Сохранение...' : 'Сохранить изменения'}</button>
+                      <button type="button" onClick={() => router.back()} disabled={isSubmitting} className={`border border-gray-300 ${clsBtn}`}>Отмена</button>
                     </div>
                   </>
                 )}
@@ -847,13 +726,11 @@ export default function RequestPage() {
                 </div>
               )}
             </div>
-          )}
-          {activeTab === 'list' && <RequestsList onSwitchToCreate={() => setActiveTab('create')} />} 
         </div>
       </main>
       <Footer />
 
-      {/* ---- Модальное окно контрагента (из account/page.tsx) ---- */}
+      {/* ---- Модальное окно контрагента ---- */}
       <div 
         className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 transition-opacity duration-300 ${showCpModal ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={resetCpModal}
@@ -1217,11 +1094,11 @@ const RequestItemGrid: React.FC<RequestItemGridProps> = ({ items, onItemsChange 
                     
                     const sourceValue = getCellValue(sourceRow, sourceCol);
     
-                    if (r >= newItems.length) {
+                    if (r >= newItems.length) { // Ensure row exists
                         newItems.push({ id: makeId(), name: '', specifications: '', unit: 'шт.', quantity: '' });
                     }
                     const item = newItems[r];
-                    if (!item || c === 2) continue;
+                    if (!item || c === 2) continue; // Skip unit column
     
                     switch (c) {
                         case 0: item.name = sourceValue as string; break;

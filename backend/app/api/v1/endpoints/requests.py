@@ -9,7 +9,7 @@ import uuid
 import aiofiles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status, BackgroundTasks, Query
 from pydantic import BaseModel, EmailStr, Field, ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -18,12 +18,16 @@ from app.api.deps import get_db, get_current_user
 from app.core.config import settings
 from app.schemas.user import Role as UserRole
 from app.models.user import User
-from app.models.request import Request, RequestItem, Offer, OfferItem, Comment
+from app.models.request import Request, RequestItem, Offer, OfferItem, Comment, SelectedOffer
 from app.models.crm import Email
 from app.models.supplier import Supplier
 from app.models.offer_token import OfferToken
 from app.excel_processor import ExcelProcessor
-from app.schemas.request import RequestCreate, RequestOut, RequestItemCreate, RequestItemOut, OfferCreate, CommentCreate, CommentOut
+from app.schemas.request import (
+    RequestCreate, RequestOut, RequestItemCreate, RequestItemOut, 
+    OfferCreate, CommentCreate, CommentOut, SelectOffersPayload, SelectedOfferOut,
+    SupplierStatusUpdate
+)
 from app.services.email_service import send_email_background
 
 router = APIRouter()
@@ -31,6 +35,7 @@ router = APIRouter()
 class RequestStatus(str, Enum):
     CREATED = "Заявка создана"
     SUPPLIER_SEARCH = "Поиск поставщиков"
+    MARKUP = "Наценка"
     OFFER_SENT = "КП отправлено"
     PAID = "Оплачено"
     IN_DELIVERY = "В доставке"
@@ -222,51 +227,6 @@ def _generate_email_html(
 """
     return html_content
 
-
-
-def _generate_award_email_html(
-    req: Request,
-    winning_offer: Offer,
-    deal_url: str,
-) -> str:
-    counterparty_name = req.counterparty.short_name if req.counterparty else 'Запрос поставки'
-    counterparty_inn = f"ИНН: {req.counterparty.inn}" if req.counterparty and req.counterparty.inn else ''
-
-    html_content = f"""<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ваше предложение выбрано!</title>
-<style>@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');</style>
-</head>
-<body style="margin: 0; padding: 0; font-family: 'Montserrat', 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #ffffff; color: #212529;">
-    <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 660px; margin: 0 auto;">
-        <tr>
-            <td style="padding: 30px 20px;">
-                <h1 style="margin: 0 0 5px 0; font-size: 24px; font-weight: 700; color: #212529;">{counterparty_name}</h1>
-                <p style="margin: 0; font-size: 16px; color: #6c757d;">{counterparty_inn}</p>
-            </td>
-        </tr>
-        <tr><td style="padding: 0 20px;"><div style="height: 3px; background-color: #D97706; width: 100%;"></div></td></tr>
-        <tr>
-            <td style="padding: 40px 20px;">
-                <h2 style="margin-top: 0; margin-bottom: 25px; font-size: 24px; color: #212529; font-weight: 600;">Поздравляем! Ваше предложение выбрано!</h2>
-                <p style="margin-bottom: 25px; color: #343a40; line-height: 1.7; font-size: 16px;">Здравствуйте, {winning_offer.supplier.short_name},</p>
-                <p style="margin-bottom: 30px; color: #343a40; line-height: 1.7; font-size: 16px;">Ваше предложение по заявке №{req.display_id} было выбрано заказчиком.</p>
-                <div style="text-align: center; margin: 30px 0;">
-                    <a href="{deal_url}" style="background-color: #D97706; color: #ffffff; padding: 15px 25px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: 600;">Перейти к сделке</a>
-                </div>
-                <p style="margin-top: 30px; color: #343a40; line-height: 1.7; font-size: 16px;">С уважением,<br>Команда KupecProject</p>
-            </td>
-        </tr>
-    </table>
-</body>
-</html>
-"""
-    return html_content
-
-
 def _infer_kind(it: RequestItemCreate) -> str:
     """Если kind не задан, определяем:
     - metal: есть хоть один из (stamp/state_standard/size/thickness/length/width/diameter)
@@ -295,6 +255,7 @@ async def list_my_requests(
         selectinload(Request.offers).selectinload(Offer.supplier),
         joinedload(Request.counterparty),
         selectinload(Request.comments).selectinload(Comment.user),
+        selectinload(Request.selected_offers)
     )
 
     if user.role in ["Директор", "Снабженец"]:
@@ -327,7 +288,8 @@ async def get_request_by_id(
             selectinload(Request.offers).selectinload(Offer.items),
             selectinload(Request.offers).selectinload(Offer.supplier),
             joinedload(Request.counterparty),
-            selectinload(Request.comments).selectinload(Comment.user)
+            selectinload(Request.comments).selectinload(Comment.user),
+            selectinload(Request.selected_offers)
         )
     )
     req = (await db.execute(q)).scalar_one_or_none()
@@ -387,14 +349,96 @@ async def create_request(
                 unit=it.unit,
                 name=it.name,
                 note=it.note,
-                allow_analogs=it.allow_analogs,
+                allow_analogs=bool(it.allow_analogs),
             )
 
         db.add(row)
 
     await db.commit()
-    await db.refresh(req, attribute_names=["items", "counterparty", "offers", "comments"])
+    await db.refresh(req, attribute_names=["items", "counterparty", "offers", "comments", "selected_offers"])
     return req
+
+
+@router.put("/requests/{request_id}", response_model=RequestOut)
+async def update_request(
+    request_id: UUID,
+    payload: RequestCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Обновляет заявку.
+    Доступно только создателю заявки или административным ролям.
+    """
+    q = select(Request).where(Request.id == request_id).options(selectinload(Request.items))
+    req = (await db.execute(q)).scalar_one_or_none()
+
+    if not req:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+
+    # Проверка прав доступа
+    if req.user_id != user.id and user.role not in [UserRole.DIRECTOR]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав для редактирования этой заявки")
+
+    # Проверка статуса
+    if req.status not in ["Заявка создана", "Поиск поставщиков"]:
+        raise HTTPException(status_code=400, detail=f"Редактирование запрещено для заявок в статусе '{req.status}'")
+
+    # Обновление основных полей заявки
+    req.comment = payload.comment
+    req.delivery_at = payload.delivery_at
+    req.counterparty_id = payload.counterparty_id
+    
+    # Адрес: если прислан в payload, используем его, иначе оставляем старый
+    if payload.delivery_address:
+        req.delivery_address = payload.delivery_address
+
+    # Обновление позиций заявки (удаление старых и добавление новых)
+    
+    # Удаляем существующие items
+    for item in req.items:
+        await db.delete(item)
+    await db.flush()
+
+
+    for it in payload.items:
+        kind = _infer_kind(it)
+        item_data = {
+            "request_id": req.id,
+            "kind": kind,
+            "category": it.category,
+            "quantity": it.quantity,
+            "comment": it.comment,
+            "unit": it.unit,
+            "allow_analogs": it.allow_analogs,
+        }
+        if kind == "metal":
+            item_data.update({
+                "size": it.size,
+                "stamp": it.stamp,
+                "state_standard": it.state_standard,
+                "thickness": it.thickness,
+                "length": it.length,
+                "width": it.width,
+                "diameter": it.diameter,
+            })
+        else: # generic
+            if not it.name:
+                raise HTTPException(status_code=422, detail="Для generic-позиции требуется 'name'")
+            item_data.update({
+                "dims": it.dims,
+                "name": it.name,
+                "note": it.note,
+            })
+        
+        new_item = RequestItem(**item_data)
+        db.add(new_item)
+
+    await db.commit()
+    # После коммита нужно перезагрузить всю заявку, чтобы получить актуальные данные
+    # включая все связанные объекты для корректного ответа по схеме RequestOut
+    updated_req = await get_request_by_id(request_id=req.id, db=db)
+    return updated_req
 
 
 
@@ -511,7 +555,6 @@ async def create_offer(
             price=item_payload.price,
             total_price=item_payload.total_price,
             is_analogue=item_payload.is_analogue,
-            # Analogue fields
             quantity=item_payload.quantity,
             unit=item_payload.unit,
             name=item_payload.name,
@@ -529,73 +572,6 @@ async def create_offer(
     await db.commit()
 
     return {"message": "Offer created successfully"}
-
-
-@router.post("/requests/{request_id}/offers/{offer_id}/award", status_code=status.HTTP_200_OK)
-async def award_offer(
-    request_id: UUID,
-    offer_id: int,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-
-    q_req = select(Request).where(Request.id == request_id, Request.user_id == user.id).options(
-        selectinload(Request.offers).selectinload(Offer.supplier),
-        joinedload(Request.winner_offer).joinedload(Offer.supplier),
-        joinedload(Request.counterparty)
-    )
-    req = (await db.execute(q_req)).scalar_one_or_none()
-
-    if not req:
-        raise HTTPException(status_code=404, detail="Request not found or access denied")
-
-    if req.status == "Оплачено":
-        raise HTTPException(status_code=400, detail="This request has already been awarded.")
-
-    winning_offer = None
-    for offer in req.offers:
-        if offer.id == offer_id:
-            winning_offer = offer
-            break
-
-    if not winning_offer:
-        raise HTTPException(status_code=404, detail="Offer not found for this request")
-
-    req.status = "Оплачено"
-    req.winner_offer_id = winning_offer.id
-    db.add(req)
-    await db.commit()
-    await db.refresh(req, attribute_names=["winner_offer", "offers"])
-
-    if winning_offer.supplier and winning_offer.supplier.email:
-        deal_url = f"{settings.FRONTEND_URL}/deals/{req.id}"
-        subject_winner = f"Поздравляем! Ваше предложение по заявке №{req.display_id} выбрано!"
-        content_winner = _generate_award_email_html(req=req, winning_offer=winning_offer, deal_url=deal_url)
-        send_email_background(
-            background_tasks=background_tasks,
-            recipient_email=winning_offer.supplier.email,
-            subject=subject_winner,
-            content=content_winner,
-        )
-
-    for offer in req.offers:
-        if offer.id != winning_offer.id and offer.supplier and offer.supplier.email:
-            subject_loser = f"Обновление по заявке №{req.display_id}"
-            content_loser = f"""
-            <p>Здравствуйте, {offer.supplier.short_name},</p>
-            <p>К сожалению, ваше предложение по заявке №{req.display_id} не было выбрано на этот раз.</p>
-            <p>Благодарим вас за участие и надеемся на дальнейшее сотрудничество.</p>
-            <p>С уважением,<br>Команда KupecProject</p>
-            """
-            send_email_background(
-                background_tasks=background_tasks,
-                recipient_email=offer.supplier.email,
-                subject=subject_loser,
-                content=content_loser,
-            )
-
-    return {"message": "Offer awarded successfully and suppliers notified."}
 
 
 @router.post("/requests/{request_id}/send", status_code=status.HTTP_202_ACCEPTED)
@@ -769,19 +745,95 @@ async def update_request_status(
         selectinload(Request.offers).selectinload(Offer.items),
         selectinload(Request.offers).selectinload(Offer.supplier),
         joinedload(Request.counterparty),
-        selectinload(Request.comments).selectinload(Comment.user)
+        selectinload(Request.comments).selectinload(Comment.user),
+        selectinload(Request.selected_offers)
     )
     req = (await db.execute(q)).scalar_one_or_none()
 
     if not req:
         raise HTTPException(status_code=404, detail="Заявка не найдена")
 
-    # Ограничение: только снабженец может начать сбор предложений
-    if payload.status == RequestStatus.SUPPLIER_SEARCH:
-        if user.role != UserRole.SUPPLY_MANAGER.value:
-            raise HTTPException(status_code=403, detail="Только снабженец может начать сбор предложений.")
+    # Ограничение: только снабженец может начать сбор предложений (отключено)
+    # if payload.status == RequestStatus.SUPPLIER_SEARCH:
+    #     if user.role != UserRole.SUPPLY_MANAGER.value:
+    #         raise HTTPException(status_code=403, detail="Только снабженец может начать сбор предложений.")
 
     req.status = payload.status.value
     await db.commit()
     await db.refresh(req)
     return req
+
+
+@router.patch("/requests/{request_id}/selected-offers/{offer_id}", response_model=SelectedOfferOut)
+async def update_selected_offer(
+    *,
+    db: AsyncSession = Depends(get_db),
+    request_id: UUID,
+    offer_id: int,
+    offer_in: SupplierStatusUpdate,
+    user: User = Depends(get_current_user),
+) -> Any:
+    """
+    Update a selected offer's status.
+    """
+    # Fetch the request to ensure it exists
+    q_req = select(Request).where(Request.id == request_id)
+    req = (await db.execute(q_req)).scalar_one_or_none()
+
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    # Authorization check
+    if req.user_id != user.id and user.role not in ["Директор", "РОП", "Снабженец"]:
+         raise HTTPException(status_code=403, detail="Not authorized to modify this request")
+
+    # Fetch the specific selected offer to ensure it's related to the request
+    q_offer = select(SelectedOffer).where(
+        SelectedOffer.id == offer_id,
+        SelectedOffer.request_id == request_id
+    )
+    selected_offer = (await db.execute(q_offer)).scalar_one_or_none()
+
+    if not selected_offer:
+        raise HTTPException(status_code=404, detail="Selected offer not found for this request")
+
+    # Update the status
+    selected_offer.supplier_status = offer_in.supplier_status
+    db.add(selected_offer)
+    await db.commit()
+    await db.refresh(selected_offer)
+
+    return selected_offer
+
+@router.post("/requests/{request_id}/select-offers", status_code=status.HTTP_201_CREATED, response_model=List[SelectedOfferOut])
+async def select_offers_for_request(
+    request_id: UUID,
+    payload: SelectOffersPayload,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+
+    q = select(Request).where(Request.id == request_id)
+    req = (await db.execute(q)).scalar_one_or_none()
+
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    if req.user_id != user.id and user.role not in ["Директор", "РОП"]:
+         raise HTTPException(status_code=403, detail="Not authorized to modify this request")
+    await db.execute(delete(SelectedOffer).where(SelectedOffer.request_id == request_id))
+
+    created_offers = []
+    for offer_payload in payload.offers:
+        db_offer = SelectedOffer(
+            request_id=request_id,
+            **offer_payload.model_dump()
+        )
+        db.add(db_offer)
+        created_offers.append(db_offer)
+
+    await db.commit()
+    for offer in created_offers:
+        await db.refresh(offer)
+
+    return created_offers

@@ -26,6 +26,7 @@ class Request(Base):
     offers = relationship("Offer", back_populates="request", foreign_keys="Offer.request_id", cascade="all, delete-orphan")
     winner_offer = relationship("Offer", foreign_keys=[winner_offer_id])
     comments = relationship("Comment", back_populates="request", cascade="all, delete-orphan")
+    selected_offers = relationship("SelectedOffer", back_populates="request", cascade="all, delete-orphan")
 
 class RequestItem(Base):
     __tablename__ = "request_items"
@@ -105,6 +106,30 @@ class OfferItem(Base):
     state_standard = Column(String, nullable=True)  # ГОСТ
 
     offer = relationship("Offer", back_populates="items")
+    request_item = relationship("RequestItem")
+
+
+class SelectedOffer(Base):
+    __tablename__ = "selected_offers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(UUID(as_uuid=True), ForeignKey("requests.id", ondelete="CASCADE"), nullable=False)
+    request_item_id = Column(Integer, ForeignKey("request_items.id", ondelete="CASCADE"), nullable=False)
+
+    # Information about the chosen supplier and price
+    supplier_name = Column(String, nullable=False)
+    price = Column(Float, nullable=False)
+
+    # Additional supplier data from the frontend
+    delivery_included = Column(Boolean, default=False)
+    delivery_time = Column(String, nullable=True)
+    vat_included = Column(Boolean, default=False)
+    comment = Column(String, nullable=True)
+    company_type = Column(String, nullable=True)
+    payment_type = Column(String, nullable=True)
+    supplier_status = Column(String, nullable=False, server_default="В работе")
+
+    request = relationship("Request", back_populates="selected_offers")
     request_item = relationship("RequestItem")
 
 class Comment(Base):

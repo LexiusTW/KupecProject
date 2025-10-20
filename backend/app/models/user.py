@@ -9,7 +9,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     login = Column(String, unique=True, index=True, nullable=False)
-    email = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=True)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean(), default=True)
     role = Column(String, nullable=False)
@@ -25,6 +25,9 @@ class User(Base):
 
     delivery_address = Column(String(500), nullable=True)
     email_footer = Column(Text, nullable=True)
+
+    # Связь с подключенными OAuth аккаунтами
+    oauth_accounts = relationship("OAuthAccount", back_populates="user", cascade="all, delete-orphan")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

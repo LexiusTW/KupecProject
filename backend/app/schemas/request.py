@@ -148,9 +148,38 @@ class RequestOut(BaseModel):
     delivery_at: Optional[date] = None
     created_at: datetime
     status: str
-    winner_offer_id: Optional[int] = None
     items: List[RequestItemOut]
     offers: List[OfferOut]
     counterparty: Optional[CounterpartyInRequest] = None
     comments: List[CommentOut] = []
+    selected_offers: List["SelectedOfferOut"] = []
     model_config = {"from_attributes": True}
+
+
+class SelectedOfferBase(BaseModel):
+    request_item_id: int
+    supplier_name: str
+    price: float
+    delivery_included: Optional[bool] = False
+    delivery_time: Optional[str] = None
+    vat_included: Optional[bool] = False
+    comment: Optional[str] = None
+    company_type: Optional[str] = None
+    payment_type: Optional[str] = None
+    supplier_status: str = "В работе"
+
+
+class SelectedOfferCreate(SelectedOfferBase):
+    pass
+
+
+class SelectedOfferOut(SelectedOfferBase):
+    id: int
+    model_config = {"from_attributes": True}
+
+
+class SelectOffersPayload(BaseModel):
+    offers: List[SelectedOfferCreate]
+
+class SupplierStatusUpdate(BaseModel):
+    supplier_status: str

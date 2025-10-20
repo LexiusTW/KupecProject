@@ -22,10 +22,10 @@ REQUIRED_TABLES = {
 
 def get_conn():
     dsn = (
-        f"dbname='{settings.DB_DB}' "
-        f"user='{settings.DB_USER}' "
-        f"password='{settings.DB_PASSWORD}' "
-        f"host='{settings.DB_SERVER}' "
+        f"dbname='{settings.POSTGRES_DB}' "
+        f"user='{settings.POSTGRES_USER}' "
+        f"password='{settings.POSTGRES_PASSWORD}' "
+        f"host='{settings.DB_HOST}' "
         f"port='{settings.DB_PORT}'"
     )
     return psycopg2.connect(dsn)
