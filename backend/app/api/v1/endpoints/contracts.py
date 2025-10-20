@@ -11,8 +11,7 @@ from app.services.contracts import generate_contract_for_counterparty, generate_
 import os
 import glob
 from app.schemas.contract import ContractGenerationResponse, ContractDataSchema
-
-from backend.app.models.contract import Contract
+from app.models.contract import Contract
 
 router = APIRouter()
 
