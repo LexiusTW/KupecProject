@@ -116,12 +116,10 @@ class SelectedOffer(Base):
     request_id = Column(UUID(as_uuid=True), ForeignKey("requests.id", ondelete="CASCADE"), nullable=False)
     request_item_id = Column(Integer, ForeignKey("request_items.id", ondelete="CASCADE"), nullable=False)
 
-    # Information about the chosen supplier and price
     supplier_name = Column(String, nullable=False)
     price = Column(Float, nullable=False)
     markup = Column(Float, nullable=True)
 
-    # Additional supplier data from the frontend
     delivery_included = Column(Boolean, default=False)
     delivery_time = Column(String, nullable=True)
     vat_included = Column(Boolean, default=False)
