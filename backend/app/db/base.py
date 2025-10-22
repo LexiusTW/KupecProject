@@ -5,6 +5,7 @@ from app.models.warehouse import Warehouse, WarehouseGreen
 from app.models.gost import Gost, SteelGrade, gost_grade_association
 from app.models.request import Request, RequestItem
 from app.models.user import User
+from app.models.department import Department
 from app.models.counterparty import Counterparty
 from app.models.offer_token import OfferToken
 from app.models.organization import Organization

@@ -33,12 +33,10 @@ def get_by_parent(db: Session, *, parent_id: int) -> List[User]:
 
 
 def create_user(db: Session, *, obj_in: UserCreate) -> User:
-    # 1. Найти или создать организацию
     organization = crud_organization.get_by_inn(db, inn=obj_in.organization.inn)
     if not organization:
         organization = crud_organization.create(db, obj_in=obj_in.organization)
 
-    # 2. Создать пользователя
     db_obj = User(
         login=obj_in.login,
         email=obj_in.email,
@@ -68,6 +66,7 @@ def create_user_by_admin(db: Session, *, obj_in: UserCreateByAdmin, creator: Use
         is_active=True,
         role=obj_in.role.value,
         parent_id=obj_in.parent_id,
+        department_id=obj_in.department_id,
         organization_id=creator.organization_id
     )
     db.add(db_obj)
@@ -90,7 +89,6 @@ def update(db: Session, *, db_obj: User, obj_in: UserUpdateByAdmin | Dict[str, A
     else:
         update_data = obj_in.model_dump(exclude_unset=True)
 
-    # Проверяем, есть ли поле role в обновлении и если есть, то устанавливаем его значение
     if 'role' in update_data and update_data['role'] is not None:
         update_data['role'] = update_data['role'].value
 

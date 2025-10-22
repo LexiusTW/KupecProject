@@ -1,6 +1,6 @@
-#app/api/v1/api.py
+ 
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, search, filters, crm, requests, users, suggest, gosts, counterparties, excel, suppliers, contracts, calc, docs
+from app.api.v1.endpoints import auth, search, filters, crm, requests, users, suggest, gosts, counterparties, excel, suppliers, contracts, calc, docs, departments, statistics
 
 api_router = APIRouter()
 
@@ -18,3 +18,5 @@ api_router.include_router(excel.router, tags=["excel"])
 api_router.include_router(suppliers.router, tags=["suppliers"])
 api_router.include_router(calc.router, tags=["calc"])
 api_router.include_router(docs.router, tags=["docs"])
+api_router.include_router(departments.router, tags=["departments"])
+api_router.include_router(statistics.router, tags=["statistics"])
