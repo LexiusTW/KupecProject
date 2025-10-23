@@ -18,7 +18,9 @@ class User(Base):
     parent = relationship("User", remote_side=[id], backref="children")
 
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
     organization = relationship("Organization", back_populates="users")
+    department = relationship("Department", back_populates="users")
 
     employee_name = Column(String, nullable=False)
     phone_number = Column(String, unique=True, nullable=True)

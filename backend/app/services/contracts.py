@@ -11,9 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.counterparty import Counterparty
 
-CONTRACTS_DIR = "/Users/elr1c180/Desktop/KupecProject/contracts"
-DOCX_TEMPLATE_PATH = "/Users/elr1c180/Desktop/KupecProject/Договор_поставки_ТиО_2020_с_клиентом.docx"
-RFQ_TEMPLATE_PATH = "/Users/elr1c180/Desktop/KupecProject/contracts/Запрос-КП-от-поставщика.docx"
+CONTRACTS_DIR = "../../../contracts"
+DOCX_TEMPLATE_PATH = "../../../Договор_поставки_ТиО_2020_с_клиентом.docx"
+RFQ_TEMPLATE_PATH = "../../../contracts/Запрос-КП-от-поставщика.docx"
 
 def ensure_contracts_dir():
     Path(CONTRACTS_DIR).mkdir(exist_ok=True)

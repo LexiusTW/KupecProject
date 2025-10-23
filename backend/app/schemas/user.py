@@ -18,9 +18,9 @@ class UserCreate(BaseModel):
     email: Optional[str] = None
     employee_name: str
     phone_number: Optional[str] = None
-    # При регистрации новой компании, ожидаем полные данные
+    
     organization: OrganizationCreate
-    # Роль при самостоятельной регистрации обычно фиксирована или выбирается из ограниченного списка
+    
     role: Role = Role.DIRECTOR
     
 # Схема для создания пользователя админом (Директор или РОП)
@@ -31,9 +31,10 @@ class UserCreateByAdmin(BaseModel):
     employee_name: str
     phone_number: Optional[str] = None
     role: Role
-    parent_id: Optional[int] = None # Для связи Менеджера с РОПом
+    parent_id: Optional[int] = None
+    department_id: Optional[int] = None
 
-# Базовая схема для вывода данных о пользователе
+ 
 class UserBase(BaseModel):
     id: int
     login: str
@@ -45,14 +46,15 @@ class UserBase(BaseModel):
     parent_id: Optional[int] = None
     created_at: datetime
     organization: OrganizationSchema
+    department_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
-# Схема для вывода списка пользователей
+ 
 class UserList(BaseModel):
     users: List[UserBase]
 
-# Схема для смены пароля
+ 
 class UserChangePassword(BaseModel):
     old_password: str
     new_password: constr(min_length=8) #type: ignore
@@ -64,13 +66,12 @@ class UserChangePassword(BaseModel):
             raise ValueError('Пароли не совпадают')
         return v
 
-# Схема для обновления профиля
+ 
 class UserProfileUpdate(BaseModel):
-    # Это схема для обновления данных самим пользователем.
-    # Организационные данные здесь не меняются.
+    
     logo_url: Optional[str] = None
 
-# Схема для обновления пользователя админом (Директор или РОП)
+ 
 class UserUpdateByAdmin(BaseModel):
     login: Optional[str] = None
     email: Optional[str] = None
@@ -78,4 +79,5 @@ class UserUpdateByAdmin(BaseModel):
     phone_number: Optional[str] = None
     role: Optional[Role] = None
     parent_id: Optional[int] = None
+    department_id: Optional[int] = None
     is_active: Optional[bool] = None

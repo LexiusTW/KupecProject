@@ -15,7 +15,7 @@ class Request(Base):
     counterparty_id = Column(Integer, ForeignKey("counterparties.id"), nullable=True)
     delivery_address = Column(String, nullable=True)
     comment = Column(String, nullable=True)
-    delivery_at = Column(Date, nullable=True) # Дата поставки
+    delivery_at = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     status = Column(String, nullable=False, server_default="Заявка создана")
     winner_offer_id = Column(Integer, ForeignKey("offers.id", use_alter=True), nullable=True)
@@ -34,20 +34,17 @@ class RequestItem(Base):
     id = Column(Integer, primary_key=True, index=True)
     request_id = Column(UUID(as_uuid=True), ForeignKey("requests.id"), nullable=False)
 
-    # общий блок
-    kind = Column(String, nullable=True)        # "metal" | "generic"
-    category = Column(String, nullable=True)    # пользовательская категория
+    kind = Column(String, nullable=True)
+    category = Column(String, nullable=True)
     quantity = Column(Float, nullable=True)
     comment = Column(String, nullable=True)
 
-    # НОВОЕ: универсальное строковое поле размера (для металла) и характеристики/ед.изм. (для generic)
-    size = Column(String, nullable=True)        # для metal: "1x1x1" и т.п. (отображение)
-    dims = Column(String, nullable=True)        # для generic: произвольные характеристики
-    unit  = Column(String, nullable=True)        # для generic: ед. изм. (шт/м/кг/…)
+    size = Column(String, nullable=True)
+    dims = Column(String, nullable=True)
+    unit  = Column(String, nullable=True)
 
-    # блок только для metal:
     stamp = Column(String, nullable=True)
-    state_standard = Column(String, nullable=True)  # ГОСТ/ТУ
+    state_standard = Column(String, nullable=True)
 
     thickness = Column(Float, nullable=True)
     length = Column(Float, nullable=True)
@@ -55,7 +52,6 @@ class RequestItem(Base):
     diameter = Column(Float, nullable=True)
     allow_analogs = Column(Boolean, nullable=True)
 
-    # блок только для generic:
     name = Column(String, nullable=True)
     note = Column(String, nullable=True)
 
@@ -72,7 +68,6 @@ class Offer(Base):
     comment = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    # Новые поля для всего предложения
     delivery_option = Column(String, nullable=False)
     vat_option = Column(String, nullable=False)
     invoice_file_path = Column(String, nullable=False)
@@ -88,22 +83,20 @@ class OfferItem(Base):
     id = Column(Integer, primary_key=True, index=True)
     offer_id = Column(Integer, ForeignKey("offers.id"), nullable=False)
     request_item_id = Column(Integer, ForeignKey("request_items.id"), nullable=False)
-    price = Column(Float, nullable=False) # цена за единицу
+    price = Column(Float, nullable=False)
     total_price = Column(Float, nullable=True)
     is_analogue = Column(Boolean, default=False, nullable=False)
 
     quantity = Column(Float, nullable=True)
     unit = Column(String, nullable=True)
 
-    # generic
     name = Column(String, nullable=True)
-    description = Column(String, nullable=True) # Размеры, характеристики
-
-    # металлопрокат
+    description = Column(String, nullable=True)
+    
     category = Column(String, nullable=True)
     size = Column(String, nullable=True)
-    stamp = Column(String, nullable=True) # Марка
-    state_standard = Column(String, nullable=True)  # ГОСТ
+    stamp = Column(String, nullable=True)
+    state_standard = Column(String, nullable=True)
 
     offer = relationship("Offer", back_populates="items")
     request_item = relationship("RequestItem")
