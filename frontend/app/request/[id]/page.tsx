@@ -2,8 +2,11 @@
 
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import Header from '@/app/components/Header';
 import Footer from '@/app/components/Footer';
+import StatusRoadmap from '@/app/components/StatusRoadmap';
+import SelectedOffersTable from '@/app/components/SelectedOffersTable';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -35,6 +38,20 @@ type RequestItem = {
 
 type DisplayRequestItem = RequestItem & { displayName: string | null };
 
+type SelectedOffer = {
+  id: number;
+  request_item_id: number;
+  supplier_name: string;
+  price: number;
+  delivery_included: boolean;
+  delivery_time: string;
+  vat_included: boolean;
+  comment: string;
+  company_type: 'end_user' | 'trading' | '';
+  payment_type: 'immediate' | 'deferred' | 'installment' | 'partial_postpayment' | '';
+  supplier_status: string;
+};
+
 type RequestDetails = {
   id: string;
   display_id: number;
@@ -43,6 +60,7 @@ type RequestDetails = {
   delivery_address: string | null;
   items: RequestItem[];
   comments: Comment[];
+  selected_offers?: SelectedOffer[];
 };
 
 type SupplierCol = {
@@ -53,6 +71,8 @@ type SupplierCol = {
   deliveryTime: string;
   vatIncluded: boolean;
   comment: string;
+  companyType: 'end_user' | 'trading' | '';
+  paymentType: 'immediate' | 'deferred' | 'installment' | 'partial_postpayment' | '';
 };
 
 type MeOut = {
@@ -60,6 +80,9 @@ type MeOut = {
     login: string;
     role: 'Директор' | 'РОП' | 'Менеджер' | 'Снабженец';
 };
+
+type Status = 'Заявка создана' | 'Поиск поставщиков' | 'Наценка' | 'КП отправлено' | 'Оплачено' | 'В доставке' | 'Сделка закрыта';
+
 
 // ---------- Helpers ----------
 const makeId = () =>
@@ -70,25 +93,6 @@ const makeId = () =>
 const formatMoney = (v?: number | null) =>
   v == null || Number.isNaN(v) ? '—' : `${v.toLocaleString('ru-RU')} ₽`;
 
-const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'Заявка создана':
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Заявка создана</span>;
-      case 'Поиск поставщиков':
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Поиск поставщиков</span>;
-      case 'КП отправлено':
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">КП отправлено</span>;
-      case 'Оплачено':
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Оплачено</span>;
-      case 'В доставке':
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-cyan-100 text-cyan-800">В доставке</span>;
-      case 'Сделка закрыта':
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Сделка закрыта</span>;
-      default:
-        return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">{status}</span>;
-    }
-};
-
 
 // ---------- Main Page Component ----------
 export default function RequestDetailPage() {
@@ -96,38 +100,15 @@ export default function RequestDetailPage() {
   const id = params.id as string;
 
   const [request, setRequest] = useState<RequestDetails | null>(null);
+  const [viewingStatus, setViewingStatus] = useState<Status | null>(null);
   const [loading, setLoading] = useState(true);
   const [messageText, setMessageText] = useState('');
   const [chat, setChat] = useState<Comment[]>([]);
   const [currentUser, setCurrentUser] = useState<MeOut | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        setLoading(true);
-        const [userRes, requestRes] = await Promise.all([
-            fetch(`${API_BASE_URL}/api/v1/users/me`, { credentials: 'include' }),
-            fetch(`${API_BASE_URL}/api/v1/requests/${id}`, { credentials: 'include' })
-        ]);
-
-        if (!userRes.ok) throw new Error('Ошибка загрузки данных пользователя');
-        const userData: MeOut = await userRes.json();
-        setCurrentUser(userData);
-
-        if (!requestRes.ok) throw new Error('Ошибка загрузки заявки');
-        const requestData: RequestDetails = await requestRes.json();
-        setRequest(requestData);
-        setChat(requestData.comments || []);
-
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, [id]);
+  const [selectionStatus, setSelectionStatus] = useState<Record<string, boolean>>({});
+  const [isDocumentsModalOpen, setIsDocumentsModalOpen] = useState(false);
+  const [isDocsDropdownOpen, setIsDocsDropdownOpen] = useState(false);
 
   const categorizedItems = useMemo(() => {
     if (!request?.items) return {};
@@ -145,6 +126,49 @@ export default function RequestDetailPage() {
       return acc;
     }, {} as Record<string, DisplayRequestItem[]>);
   }, [request]);
+
+  const allPricesSelected = useMemo(() => {
+    const categoryNames = Object.keys(categorizedItems);
+    if (categoryNames.length === 0) return false;
+    // The selectionStatus is updated by the child table component.
+    // We check if a status is recorded for every category and if that status is `true`.
+    return categoryNames.every(name => selectionStatus[name] === true);
+  }, [categorizedItems, selectionStatus]);
+
+  const handleSelectionChange = useCallback((categoryName: string, isComplete: boolean) => {
+    setSelectionStatus(prev => ({ ...prev, [categoryName]: isComplete }));
+  }, []);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const [userRes, requestRes] = await Promise.all([
+            fetch(`${API_BASE_URL}/api/v1/users/me`, { credentials: 'include' }),
+            fetch(`${API_BASE_URL}/api/v1/requests/${id}`, { credentials: 'include' })
+        ]);
+
+        if (!userRes.ok) throw new Error('Ошибка загрузки данных пользователя');
+        const userData: MeOut = await userRes.json();
+        setCurrentUser(userData);
+
+        if (!requestRes.ok) throw new Error('Ошибка загрузки заявки');
+        const requestData: RequestDetails = await requestRes.json();
+        
+
+        
+        setRequest(requestData);
+        setViewingStatus(requestData.status as Status);
+        setChat(requestData.comments || []);
+
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, [id]);
 
   const sendChat = async () => {
     if (!messageText.trim() || !id || !currentUser) return;
@@ -182,28 +206,185 @@ export default function RequestDetailPage() {
     }
   };
 
-  const handleChangeStatus = async (newStatus: string) => {
-    if (!request || isSubmitting) return;
-    setIsSubmitting(true);
+  const handleSupplierStatusChange = async (supplierName: string, newStatus: string) => {
+    if (!request || !request.selected_offers) return;
+
+    const offersToUpdate = request.selected_offers.filter(offer => offer.supplier_name === supplierName);
+    if (offersToUpdate.length === 0) {
+        console.warn(`No offers found for supplier: ${supplierName}`);
+        return;
+    }
+
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/requests/${id}/status`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.detail || 'Не удалось изменить статус');
-      }
-      const updatedRequest = await response.json();
-      setRequest(updatedRequest);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSubmitting(false);
+        const updatePromises = offersToUpdate.map(offer =>
+            fetch(`${API_BASE_URL}/api/v1/requests/${id}/selected-offers/${offer.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ supplier_status: newStatus }),
+                credentials: 'include',
+            }).then(async res => {
+                if (!res.ok) {
+                    const errorBody = await res.text();
+                    console.error(`Failed to update offer ${offer.id}:`, res.status, errorBody);
+                    throw new Error(`Failed to update offer ${offer.id}`);
+                }
+                return res.json();
+            })
+        );
+
+        const updatedOffersResults = await Promise.all(updatePromises);
+
+        const updatedOffersMap = new Map(updatedOffersResults.map(o => [o.id, o]));
+
+        const newSelectedOffers = request.selected_offers.map(offer =>
+            updatedOffersMap.has(offer.id) ? updatedOffersMap.get(offer.id)! : offer
+        );
+
+        const newRequest = { ...request, selected_offers: newSelectedOffers };
+        setRequest(newRequest);
+
+        const allPaid = newSelectedOffers.every(offer => offer.supplier_status === 'Оплачено');
+        if (allPaid) {
+            handleChangeStatus('Оплачено');
+        }
+
+        const allInDelivery = newSelectedOffers.every(offer => offer.supplier_status === 'В доставке' || offer.supplier_status === 'Готово к выгрузке');
+        if (allInDelivery) {
+            handleChangeStatus('В доставке');
+        }
+
+        const allFinished = newSelectedOffers.every(offer => offer.supplier_status === 'Завершено');
+        if (allFinished) {
+            handleChangeStatus('Сделка закрыта');
+        }
+    } catch (error) {
+        console.error('Error updating supplier status:', error);
     }
   };
+
+  const handleChangeStatus = async (newStatus: Status, markups?: any) => {
+    if (!request || isSubmitting || (newStatus === 'Наценка' && !allPricesSelected)) return;
+
+    setIsSubmitting(true);
+    try {
+        let updatedRequestData = request;
+
+        if (newStatus === 'Наценка' || (newStatus === 'КП отправлено' && markups)) {
+            const offersToSave = [];
+            for (const categoryName of Object.keys(categorizedItems)) {
+                const suppliersKey = `suppliers_data_${id}_${categoryName.replace(/\s+/g, '_')}`;
+                const selectionKey = `selected_prices_${id}_${categoryName.replace(/\s+/g, '_')}`;
+
+                const suppliersRaw = localStorage.getItem(suppliersKey);
+                const selectionRaw = localStorage.getItem(selectionKey);
+
+                if (suppliersRaw && selectionRaw) {
+                    const suppliers: SupplierCol[] = JSON.parse(suppliersRaw);
+                    const selection: Record<number, number> = JSON.parse(selectionRaw);
+                    
+                    for (const itemIdStr in selection) {
+                        const itemId = parseInt(itemIdStr, 10);
+                        const supplierColIndex = selection[itemId];
+                        const supplier = suppliers[supplierColIndex];
+                        const item = request.items.find(i => i.id === itemId);
+
+                        if (supplier && item) {
+                            const price = supplier.prices[item.id];
+
+                            if (price !== null && price !== undefined) {
+                                let markupInRubles = 0;
+                                if (markups) {
+                                    const itemMarkup = markups.items[itemId];
+                                    if (itemMarkup !== undefined && itemMarkup !== null && itemMarkup > 0) {
+                                        markupInRubles = itemMarkup;
+                                    } else {
+                                        const supplierMarkup = markups.suppliers[supplier.name];
+                                        if (supplierMarkup && supplierMarkup.value > 0) {
+                                            if (supplierMarkup.type === 'percentage') {
+                                                markupInRubles = price * (supplierMarkup.value / 100);
+                                            } else {
+                                                markupInRubles = supplierMarkup.value;
+                                            }
+                                        } else {
+                                            const globalMarkup = markups.global;
+                                            if (globalMarkup && globalMarkup.value > 0) {
+                                                if (globalMarkup.type === 'percentage') {
+                                                    markupInRubles = price * (globalMarkup.value / 100);
+                                                } // Global fixed markup is not saved per item
+                                            }
+                                        }
+                                    }
+                                }
+
+                                offersToSave.push({
+                                    request_item_id: item.id,
+                                    supplier_name: supplier.name,
+                                    price: price,
+                                    markup: markupInRubles,
+                                    delivery_included: supplier.deliveryIncluded,
+                                    delivery_time: supplier.deliveryTime,
+                                    vat_included: supplier.vatIncluded,
+                                    comment: supplier.comment,
+                                    company_type: supplier.companyType,
+                                    payment_type: supplier.paymentType,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            const saveOffersRes = await fetch(`${API_BASE_URL}/api/v1/requests/${id}/select-offers`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ offers: offersToSave }),
+            });
+
+            if (!saveOffersRes.ok) {
+                const err = await saveOffersRes.json().catch(() => ({}));
+                throw new Error(err.detail || 'Не удалось сохранить выбранные предложения');
+            }
+            updatedRequestData = await saveOffersRes.json();
+            setRequest(updatedRequestData);
+        }
+
+        const statusUpdateRes = await fetch(`${API_BASE_URL}/api/v1/requests/${id}/status`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus }),
+        });
+
+        if (!statusUpdateRes.ok) {
+            const err = await statusUpdateRes.json().catch(() => ({}));
+            throw new Error(err.detail || 'Не удалось изменить статус');
+        }
+
+        const finalUpdatedRequest = await statusUpdateRes.json();
+        setRequest(finalUpdatedRequest);
+        setViewingStatus(finalUpdatedRequest.status as Status);
+
+    } catch (e) {
+        console.error(e);
+        // You can show an error to the user here
+    } finally {
+        setIsSubmitting(false);
+    }
+  };
+
+  const handleGenerateCounterProposal = () => {
+    console.log("Generating counter proposal...");
+    // Add actual logic here
+    setIsDocumentsModalOpen(false);
+  };
+
+  const handleGenerateInvoice = () => {
+    console.log("Generating invoice...");
+    // Add actual logic here
+    setIsDocumentsModalOpen(false);
+  };
+
 
   if (loading) {
     return (
@@ -225,70 +406,165 @@ export default function RequestDetailPage() {
     );
   }
 
+  const isSelectionPhase = viewingStatus === 'Поиск поставщиков';
+  const isMarkupPhase = viewingStatus === 'Наценка';
+  const isEditable = request?.status === 'Заявка создана' || request?.status === 'Поиск поставщиков';
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-yellow-100 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
       <Header />
       <main className="flex-grow container mx-auto px-4 py-8 space-y-8">
         {/* Request Header */}
-        <div className="bg-white rounded-xl shadow-md p-6">
+        <div className="bg-white rounded-xl shadow-md p-6 space-y-4">
           <div className="flex justify-between items-start">
             <div>
-              <div className="flex items-center gap-4 mb-2">
+              <div className="flex items-center gap-4">
                 <h1 className="text-2xl font-bold text-gray-800">Заявка №{request.display_id}</h1>
-                {request.status && getStatusBadge(request.status)}
+                {isEditable && (
+                  <Link href={`/request/${id}/edit`} title="Редактировать заявку">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-500 hover:text-amber-600 cursor-pointer" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L17.5 2.5z" /></svg>
+                  </Link>
+                )}
               </div>
-              <p className="text-gray-500 text-sm">Создана: {new Date(request.created_at).toLocaleDateString('ru-RU')}</p>
+              <p className="text-gray-500 text-sm mt-1">Создана: {new Date(request.created_at).toLocaleDateString('ru-RU')}</p>
               <p className="text-gray-500 text-sm">Адрес доставки: {request.delivery_address || '—'}</p>
             </div>
             <div className="flex items-center gap-3">
-                {request.status === 'Заявка создана' && (
-                  <div className="relative group" title={currentUser?.role !== 'Снабженец' ? 'Только снабженец может начать сбор предложений' : ''}>
-                    <button 
-                      onClick={() => handleChangeStatus('Поиск поставщиков')} 
-                      disabled={isSubmitting || currentUser?.role !== 'Снабженец'} 
-                      className="bg-emerald-600 text-white px-4 py-2 rounded-md hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                    >
-                      {isSubmitting ? 'Загрузка...' : 'Начать сбор предложений'}
-                    </button>
-                  </div>
-                )}
                 {request.status === 'Поиск поставщиков' && (
                     <>
-                        <div className="relative group" title="Функция в разработке">
-                            <button disabled className="bg-blue-600 text-white px-4 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap">
-                                Скачать КП
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsDocsDropdownOpen(prev => !prev)}
+                                className="bg-blue-600 text-white px-4 py-2 rounded-md whitespace-nowrap"
+                            >
+                                Документы
                             </button>
+                            {isDocsDropdownOpen && (
+                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border">
+                                    <button
+                                        onClick={() => { console.log('Запрос КП'); setIsDocsDropdownOpen(false); }}
+                                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                    >
+                                        Запрос КП
+                                    </button>
+                                    <button
+                                        onClick={() => { console.log('Счет на оплату'); setIsDocsDropdownOpen(false); }}
+                                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                    >
+                                        Счет на оплату
+                                    </button>
+                                </div>
+                            )}
                         </div>
-                        <button onClick={() => handleChangeStatus('КП отправлено')} disabled={isSubmitting} className="bg-amber-600 text-white px-4 py-2 rounded-md hover:bg-amber-700 disabled:opacity-50 whitespace-nowrap">
-                            {isSubmitting ? '...' : 'КП отправлено'}
+                        <button 
+                            onClick={() => handleChangeStatus('Наценка')} 
+                            disabled={!allPricesSelected || isSubmitting}
+                            className="bg-green-600 text-white px-4 py-2 rounded-md whitespace-nowrap disabled:bg-gray-400 disabled:cursor-not-allowed"
+                            title={!allPricesSelected ? 'Выберите по одному поставщику для каждой категории' : ''}
+                        >
+                            Перейти к наценке
                         </button>
                     </>
                 )}
-                {request.status === 'КП отправлено' && (
-                    <button onClick={() => handleChangeStatus('Оплачено')} disabled={isSubmitting} className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-50 whitespace-nowrap">
-                        {isSubmitting ? '...' : 'Клиент оплатил'}
-                    </button>
-                )}
-                {request.status === 'Оплачено' && (
-                    <button onClick={() => handleChangeStatus('В доставке')} disabled={isSubmitting} className="bg-cyan-600 text-white px-4 py-2 rounded-md hover:bg-cyan-700 disabled:opacity-50 whitespace-nowrap">
-                        {isSubmitting ? '...' : 'Передать в доставку'}
-                    </button>
+                 {request.status !== 'Поиск поставщиков' && request.status !== 'Заявка создана' && (
+                    <div className="relative">
+                        <button
+                            onClick={() => setIsDocsDropdownOpen(prev => !prev)}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-md whitespace-nowrap"
+                        >
+                            Документы
+                        </button>
+                        {isDocsDropdownOpen && (
+                            <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg z-10 border">
+                                <button
+                                    onClick={() => { handleGenerateCounterProposal(); setIsDocsDropdownOpen(false); }}
+                                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                >
+                                    Сформировать запрос КП
+                                </button>
+                                <button
+                                    onClick={() => { handleGenerateInvoice(); setIsDocsDropdownOpen(false); }}
+                                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                >
+                                    Сформировать счет на оплату
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 )}
             </div>
-           </div>
+          </div>
+          
+          {request.status && viewingStatus && (
+            <StatusRoadmap 
+              currentStatus={request.status as Status} 
+              viewingStatus={viewingStatus}
+              onSelectStatus={setViewingStatus} 
+            />
+          )}
         </div>
 
-        {/* Category Tables */}
-        {request.status !== 'КП отправлено' && request.status !== 'Оплачено' && request.status !== 'В доставке' && request.status !== 'Сделка закрыта' && (
+        {/* Content based on status */}
+        {viewingStatus === 'Заявка создана' ? (
+            <div className="space-y-8">
+                {Object.entries(categorizedItems).map(([categoryName, items]) => (
+                    <div key={categoryName} className="bg-white rounded-xl shadow-md p-4">
+                        <h2 className="text-xl font-semibold mb-4">{categoryName}</h2>
+                        <table className="min-w-full border border-gray-300 text-sm">
+                            <thead>
+                                <tr className="bg-gray-100">
+                                    <th className="border p-2 text-left">№</th>
+                                    <th className="border p-2 text-left">Наименование</th>
+                                    <th className="border p-2 text-left">Кол-во</th>
+                                    <th className="border p-2 text-left">Ед. изм.</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {items.map((item, index) => (
+                                    <tr key={item.id} className="odd:bg-white even:bg-gray-50">
+                                        <td className="border p-2">{index + 1}</td>
+                                        <td className="border p-2">{item.displayName}</td>
+                                        <td className="border p-2">{item.quantity}</td>
+                                        <td className="border p-2">{item.unit || 'шт.'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                ))}
+                <div className="flex justify-end mt-6">
+                    <button
+                        onClick={() => handleChangeStatus('Поиск поставщиков')}
+                        disabled={isSubmitting}
+                        className="bg-amber-600 text-white px-6 py-3 rounded-lg shadow hover:bg-amber-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                        Начать поиск поставщиков
+                    </button>
+                </div>
+            </div>
+        ) : isSelectionPhase ? (
             Object.entries(categorizedItems).map(([categoryName, items]) => (
               <RequestCategoryTable
                 key={categoryName}
                 categoryName={categoryName}
                 items={items}
-                isEditable={request.status !== 'Заявка создана'}
+                isEditable={true}
                 requestId={id}
+                onSelectionChange={handleSelectionChange}
               />
             ))
+        ) : isMarkupPhase ? (
+            <MarkupView 
+                request={request}
+                isSubmitting={isSubmitting}
+                onStatusChange={handleChangeStatus}
+            />
+        ) : (
+            <SelectedOffersTable 
+                items={request.items}
+                selectedOffers={request.selected_offers || []} 
+                onStatusChange={handleSupplierStatusChange}
+            />
         )}
 
         {/* Chat */}
@@ -328,10 +604,77 @@ export default function RequestDetailPage() {
           </div>
         </div>
       </main>
+
       <Footer />
     </div>
   );
 }
+
+// ---------- Markup View Component ----------
+interface MarkupViewProps {
+  request: RequestDetails;
+  isSubmitting: boolean;
+  onStatusChange: (newStatus: Status, markups?: any) => void;
+}
+
+const MarkupView: React.FC<MarkupViewProps> = ({ request, isSubmitting, onStatusChange }) => {
+  const [markups, setMarkups] = useState<{
+    global: { type: 'percentage' | 'fixed', value: number };
+    suppliers: Record<string, { type: 'percentage' | 'fixed', value: number }>;
+    items: Record<number, number>; // Ruble value
+  }>({
+    global: { type: 'percentage', value: 10 },
+    suppliers: {},
+    items: {},
+  });
+
+  // This is a simplified placeholder. 
+  // In a real implementation, you would have more complex state management for per-item/per-supplier markups.
+
+  return (
+    <div className="bg-white rounded-xl shadow-md p-6 space-y-6">
+      <h2 className="text-2xl font-bold text-gray-800">Наценка</h2>
+      
+      <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+        <h3 className="text-lg font-semibold">Общая наценка на сделку</h3>
+        <select 
+          className="p-2 border rounded-md bg-white"
+          value={markups.global.type}
+          onChange={e => setMarkups(prev => ({ ...prev, global: { ...prev.global, type: e.target.value as 'percentage' | 'fixed' } }))}
+        >
+          <option value="percentage">Процент (%)</option>
+          <option value="fixed">Фиксированная (₽)</option>
+        </select>
+        <input 
+          type="number"
+          className="p-2 border rounded-md w-24"
+          value={markups.global.value}
+          onChange={e => setMarkups(prev => ({ ...prev, global: { ...prev.global, value: parseFloat(e.target.value) || 0 } }))}
+        />
+      </div>
+
+      {/* We reuse SelectedOffersTable and pass markup info to it */}
+      <SelectedOffersTable 
+        items={request.items}
+        selectedOffers={request.selected_offers || []}
+        onStatusChange={() => {}} // Status changes are not handled here
+        isMarkupView={true}
+        markups={markups}
+        onMarkupsChange={setMarkups}
+      />
+
+      <div className="flex justify-end mt-6">
+        <button
+          onClick={() => onStatusChange('КП отправлено', markups)}
+          disabled={isSubmitting}
+          className="bg-green-600 text-white px-6 py-3 rounded-lg shadow hover:bg-green-700 transition-colors disabled:bg-gray-400"
+        >
+          Сформировать и отправить КП
+        </button>
+      </div>
+    </div>
+  );
+};
 
 // ---------- Category Table Component ----------
 interface RequestCategoryTableProps {
@@ -339,9 +682,10 @@ interface RequestCategoryTableProps {
   items: DisplayRequestItem[];
   requestId: string;
   isEditable: boolean;
+  onSelectionChange: (categoryName: string, isComplete: boolean) => void;
 }
 
-const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryName, items, requestId, isEditable }) => {
+const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryName, items, requestId, isEditable, onSelectionChange }) => {
   const tableRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [suppliers, setSuppliers] = useState<SupplierCol[]>([]);
@@ -355,16 +699,13 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: number; col: number } | null>(null);
   const [selectedPrices, setSelectedPrices] = useState<Record<number, number | null>>({});
 
-  // Используем ref для хранения начального значения из localStorage,
-  // чтобы избежать проблем с асинхронным обновлением состояния.
-  const initialSelectedPrices = useRef<Record<number, number | null> | null>(null);
-  if (initialSelectedPrices.current === null) {
-      const cachedSelectionRaw = typeof window !== 'undefined' ? localStorage.getItem(`selected_prices_${requestId}_${categoryName.replace(/\s+/g, '_')}`) : null;
-      initialSelectedPrices.current = cachedSelectionRaw ? JSON.parse(cachedSelectionRaw) : {};
-  }
-
   const storageKey = `suppliers_data_${requestId}_${categoryName.replace(/\s+/g, '_')}`;
   const selectionStorageKey = `selected_prices_${requestId}_${categoryName.replace(/\s+/g, '_')}`;
+
+  useEffect(() => {
+    const isComplete = items.length > 0 && items.every(item => selectedPrices[item.id] !== undefined && selectedPrices[item.id] !== null);
+    onSelectionChange(categoryName, isComplete);
+  }, [selectedPrices, items, categoryName, onSelectionChange]);
 
   // 1. Инициализация таблицы при загрузке `items`
   useEffect(() => {
@@ -386,15 +727,19 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
       setSuppliers(updatedSuppliers);
     } else {
       // Если в кэше пусто, создаем первого поставщика
-      setSuppliers([{
+      setSuppliers([{ 
           id: makeId(), name: 'Поставщик 1', prices: Object.fromEntries(items.map(i => [i.id, null])),
-          deliveryIncluded: false, deliveryTime: '', vatIncluded: false, comment: ''
+          deliveryIncluded: false, deliveryTime: '', vatIncluded: false, comment: '', companyType: '', paymentType: ''
       }]);
     }
 
-    // Устанавливаем состояние `selectedPrices` из ref
-    setSelectedPrices(initialSelectedPrices.current || {});
-  }, [items, categoryName, requestId, storageKey]); // Запускается, когда `items` становятся доступны
+    const cachedSelectionRaw = localStorage.getItem(selectionStorageKey);
+    if (cachedSelectionRaw) {
+        setSelectedPrices(JSON.parse(cachedSelectionRaw));
+    } else {
+        setSelectedPrices({});
+    }
+  }, [items, categoryName, requestId, storageKey, selectionStorageKey]);
 
   // 2. Сохранение данных в localStorage при их изменении
   useEffect(() => {
@@ -433,7 +778,7 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
           } else {
             const fieldRow = r - items.length;
             if (fieldRow === 1) supplier.deliveryTime = '';
-            else if (fieldRow === 4) supplier.comment = '';
+            else if (fieldRow === 6) supplier.comment = '';
           }
         }
       }
@@ -441,16 +786,35 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
     });
   }, [getSelectionRange, items]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === 'Backspace' || e.key === 'Delete') && selection && !editingCell) {
+  const handleMouseUp = useCallback(() => {
+    setIsSelecting(false);
+    setIsFilling(false);
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (editingCell) return;
+
+    if ((e.key === 'Backspace' || e.key === 'Delete') && selection) {
         e.preventDefault();
         clearSelection();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [selection, editingCell, clearSelection]);
+        return;
+    }
+
+    if (activeCell) {
+        if (e.key === 'F2') {
+            e.preventDefault();
+            setEditingCell(activeCell);
+            return;
+        }
+        if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) {
+            e.preventDefault();
+            handleCellUpdate(activeCell.row, activeCell.col, e.key);
+            setEditingCell(activeCell);
+        }
+    }
+  };
+
+
 
   useEffect(() => {
     if (!isEditable) return;
@@ -461,8 +825,8 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
         setSelection(null);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
   }, [isEditable]);
 
   useEffect(() => {
@@ -518,23 +882,24 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
       if (scrollDirection && !animationFrameId) animationFrameId = requestAnimationFrame(scrollLoop);
     };
 
-    const handleMouseUp = () => {
+    const localHandleMouseUp = () => {
       scrollDirection = null;
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
       animationFrameId = null;
       document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mouseup', localHandleMouseUp);
+      handleMouseUp();
     };
 
     document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mouseup', localHandleMouseUp);
 
     return () => {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
       document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mouseup', localHandleMouseUp);
     };
-  }, [isSelecting, isFilling]);
+  }, [isSelecting, isFilling, handleMouseUp]);
 
   const getCellValue = useCallback((row: number, col: number) => {
     if (!items || !suppliers[col]) return '';
@@ -544,30 +909,12 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
     } else {
       const fieldRow = row - items.length;
       if (fieldRow === 1) return supplier.deliveryTime;
-      if (fieldRow === 4) return supplier.comment;
+      if (fieldRow === 6) return supplier.comment;
     }
     return '';
   }, [items, suppliers]);
 
-  useEffect(() => {
-    const handleCopy = (e: ClipboardEvent) => {
-      if (!selection || editingCell) return;
-      e.preventDefault();
-      const range = getSelectionRange();
-      if (!range) return;
-      const { minRow, maxRow, minCol, maxCol } = range;
-      let copyText = '';
-      for (let r = minRow; r <= maxRow; r++) {
-        const rowValues: (string | number | null | undefined)[] = [];
-        for (let c = minCol; c <= maxCol; c++) rowValues.push(getCellValue(r, c));
-        copyText += rowValues.join('\t');
-        if (r < maxRow) copyText += '\n';
-      }
-      navigator.clipboard.writeText(copyText).catch(err => console.error('Could not copy text: ', err));
-    };
-    document.addEventListener('copy', handleCopy);
-    return () => document.removeEventListener('copy', handleCopy);
-  }, [selection, editingCell, getSelectionRange, getCellValue]);
+
 
   const addSupplier = () => {
     setSuppliers((prev) => [
@@ -580,6 +927,8 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
         deliveryTime: '',
         vatIncluded: false,
         comment: '',
+        companyType: '',
+        paymentType: '',
       },
     ]);
   };
@@ -608,7 +957,7 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
             const targetRow = activeCell.row + ri;
             const targetCol = activeCell.col + ci;
 
-            if (targetRow >= items.length + 5 || targetCol >= newSuppliers.length) return;
+            if (targetRow >= items.length + 7 || targetCol >= newSuppliers.length) return;
 
             const supplier = newSuppliers[targetCol];
             if (!supplier) return;
@@ -620,7 +969,7 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
             } else {
               const fieldRow = targetRow - items.length;
               if (fieldRow === 1) supplier.deliveryTime = val;
-              else if (fieldRow === 4) supplier.comment = val;
+              else if (fieldRow === 6) supplier.comment = val;
             }
           });
         });
@@ -634,6 +983,16 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
     handleRangePaste();
+  };
+
+  const handleCopy = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    handleRangeCopy();
+  };
+
+  const handleCut = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    handleRangeCut();
   };
 
   const handleRangeCopy = useCallback(() => {
@@ -684,7 +1043,7 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
     else if (isFilling && selection) setSelection((prev) => (prev ? { ...prev, end: { row, col } } : null));
   };
 
-  const applyFill = () => {
+  const applyFill = useCallback(() => {
     if (!isEditable) return;
     const currentSelectionRange = getSelectionRange();
     if (!currentSelectionRange || !fillSourceSelection || !activeCell) {
@@ -723,7 +1082,7 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
             } else {
               const fieldRow = r - items.length;
               if (fieldRow === 1) supplier.deliveryTime = val;
-              else if (fieldRow === 4) supplier.comment = val;
+              else if (fieldRow === 6) supplier.comment = val;
             }
           };
 
@@ -734,14 +1093,13 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
       return newSuppliers;
     });
     setFillSourceSelection(null);
-  };
+  }, [isEditable, getSelectionRange, fillSourceSelection, activeCell, getCellValue, items]);
 
-  const handleMouseUp = () => {
-    if (!isEditable) return;
-    if (isFilling) applyFill();
-    setIsFilling(false);
-    setIsSelecting(false);
-  };
+  useEffect(() => {
+    if (!isFilling && fillSourceSelection) {
+      applyFill();
+    }
+  }, [isFilling, fillSourceSelection, applyFill]);
 
   const handleDoubleClick = (row: number, col: number) => {
     if (!isEditable) return;
@@ -755,11 +1113,12 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
       const item = items[row];
       const num = value === '' ? null : Number(value);
       updatePrice(supplier.id, item.id, Number.isNaN(num) ? null : num);
-    } else {
+    }
+    else {
       const fieldRow = row - items.length;
       const changes: Partial<SupplierCol> = {};
       if (fieldRow === 1) changes.deliveryTime = value;
-      else if (fieldRow === 4) changes.comment = value;
+      else if (fieldRow === 6) changes.comment = value;
       updateSupplier(supplier.id, changes);
     }
   };
@@ -840,14 +1199,12 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
         ref={containerRef} 
         tabIndex={-1} 
         onPaste={handlePaste}
-        className={`bg-white rounded-xl shadow-md p-4 outline-none relative ${!isEditable ? 'opacity-60 pointer-events-none' : ''}`}
+        onCopy={handleCopy}
+        onCut={handleCut}
+        onKeyDown={handleKeyDown}
+        className="bg-white rounded-xl shadow-md p-4 outline-none relative"
         onClick={() => contextMenu && setContextMenu(null)}
     >
-      {!isEditable && (
-        <div className="absolute inset-0 bg-gray-100 bg-opacity-50 z-20 flex items-center justify-center">
-            <p className="text-lg font-semibold text-gray-700 bg-white/80 px-4 py-2 rounded-lg shadow">Нажмите {"\""}Начать сбор предложений{"\""}, чтобы редактировать</p>
-        </div>
-      )}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-semibold">{categoryName}</h2>
         <div className="flex gap-2">
@@ -863,7 +1220,7 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
             </button>
         </div>
       </div>
-      <div ref={tableRef} className="overflow-x-auto relative" onMouseUp={handleMouseUp}>
+      <div ref={tableRef} className="overflow-x-auto relative p-1">
         <div style={selectionStyle} className={isFilling ? 'selection-border-animated' : ''} />
         {selection && (
           <div
@@ -953,10 +1310,7 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
                 {suppliers.map((s, colIndex) => {
                   const val = s.prices[item.id];
                   const isEditing = editingCell?.row === rowIndex && editingCell?.col === colIndex;
-                  // Проверяем и текущее состояние, и начальное значение из ref
-                  // для корректной отрисовки сразу после загрузки.
-                  const isSelected = selectedPrices[item.id] === colIndex || 
-                                     (initialSelectedPrices.current && initialSelectedPrices.current[item.id] === colIndex);
+                  const isSelected = selectedPrices[item.id] === colIndex;
                   return (
                     <td
                       key={s.id}
@@ -1009,10 +1363,46 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
                 )
               })}
             </tr>
+            {/* Тип компании */}
+            <tr className="bg-gray-100">
+              <td colSpan={4} className="border p-2 font-medium">Тип компании</td>
+              {suppliers.map((s, colIndex) => (
+                <td key={s.id} data-row={items.length + 2} data-col={colIndex} className="border p-0" onContextMenu={(e) => handleContextMenu(e, items.length + 2, colIndex)}>
+                  <select
+                    value={s.companyType}
+                    onChange={(e) => updateSupplier(s.id, { companyType: e.target.value as any })}
+                    className="w-full h-full p-2 bg-transparent border-0 outline-none appearance-none cursor-pointer"
+                  >
+                    <option value="">Не выбрано</option>
+                    <option value="end_user">Конечный потребитель</option>
+                    <option value="trading">Торговая организация</option>
+                  </select>
+                </td>
+              ))}
+            </tr>
+            {/* Тип платежа */}
+            <tr>
+              <td colSpan={4} className="border p-2 font-medium">Тип платежа</td>
+              {suppliers.map((s, colIndex) => (
+                <td key={s.id} data-row={items.length + 3} data-col={colIndex} className="border p-0" onContextMenu={(e) => handleContextMenu(e, items.length + 3, colIndex)}>
+                  <select
+                    value={s.paymentType}
+                    onChange={(e) => updateSupplier(s.id, { paymentType: e.target.value as any })}
+                    className="w-full h-full p-2 bg-transparent border-0 outline-none appearance-none cursor-pointer"
+                  >
+                    <option value="">Не выбрано</option>
+                    <option value="immediate">Сразу</option>
+                    <option value="deferred">Отсрочка</option>
+                    <option value="installment">Рассрочка</option>
+                    <option value="partial_postpayment">Частичная постоплата</option>
+                  </select>
+                </td>
+              ))}
+            </tr>
             <tr className="bg-gray-100">
               <td colSpan={4} className="border p-2 font-medium">Включён ли НДС?</td>
               {suppliers.map((s, colIndex) => (
-                <td key={s.id} data-row={items.length + 2} data-col={colIndex} className="border p-2 text-center cursor-pointer" onClick={() => { if (isEditable) updateSupplier(s.id, { vatIncluded: !s.vatIncluded }) } } onContextMenu={(e) => handleContextMenu(e, items.length + 2, colIndex)}>
+                <td key={s.id} data-row={items.length + 4} data-col={colIndex} className="border p-2 text-center cursor-pointer" onClick={() => { if (isEditable) updateSupplier(s.id, { vatIncluded: !s.vatIncluded }) } } onContextMenu={(e) => handleContextMenu(e, items.length + 4, colIndex)}>
                   <input type="checkbox" readOnly checked={s.vatIncluded} className="pointer-events-none" />
                 </td>
               ))}
@@ -1026,7 +1416,7 @@ const RequestCategoryTable: React.FC<RequestCategoryTableProps> = ({ categoryNam
             <tr className="bg-gray-50">
               <td colSpan={4} className="border p-2 font-medium">Комментарий</td>
               {suppliers.map((s, colIndex) => {
-                 const rowIndex = items.length + 4;
+                 const rowIndex = items.length + 6;
                  return (
                   <td key={s.id} data-row={rowIndex} data-col={colIndex} className="border p-0 relative"
                       onMouseDown={(e) => handleMouseDown(e, rowIndex, colIndex)}

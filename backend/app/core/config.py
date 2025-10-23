@@ -16,14 +16,14 @@ class Settings:
     REFRESH_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_MINUTES"))
 
     # Настройки БД
-    DB_USER: str = os.getenv("DB_USER")
-    DB_PASSWORD: str = os.getenv("DB_PASS")
-    DB_SERVER: str = os.getenv("DB_HOST")
+    POSTGRES_USER: str = os.getenv("POSTGRES_USER")
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD")
+    DB_HOST: str = os.getenv("DB_HOST")
     DB_PORT: str = os.getenv("DB_PORT")
-    DB_DB: str = os.getenv("DB_NAME")
+    POSTGRES_DB: str = os.getenv("POSTGRES_DB")
 
     DATABASE_URL: str = (
-        f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_SERVER}:{DB_PORT}/{DB_DB}"
+        f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{DB_HOST}:{DB_PORT}/{POSTGRES_DB}"
     )
 
     # Настройки кук для токенов
@@ -49,6 +49,16 @@ class Settings:
     # Директории для загрузок
     INVOICES_DIR: str = "invoices"
     SUPPLIER_CONTRACTS_DIR: str = "contracts"
+
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET")
+    GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI")
+
+    # Yandex OAuth
+    YANDEX_CLIENT_ID: str = os.getenv("YANDEX_CLIENT_ID", "YOUR_YANDEX_ID")
+    YANDEX_CLIENT_SECRET: str = os.getenv("YANDEX_CLIENT_SECRET", "YOUR_YANDEX_SECRET")
+    YANDEX_REDIRECT_URI: str = os.getenv("YANDEX_REDIRECT_URI")
 
 
 settings = Settings()

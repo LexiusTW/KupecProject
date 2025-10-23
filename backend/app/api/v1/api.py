@@ -1,6 +1,7 @@
  
 from fastapi import APIRouter
 from app.api.v1.endpoints import auth, search, filters, crm, requests, users, suggest, gosts, counterparties, excel, suppliers, contracts, calc, docs, departments, statistics
+from app.api.v1.endpoints import auth, search, filters, crm, requests, users, suggest, gosts, counterparties, excel, suppliers, contracts, calc, docs, oauth, gmail, yandex_mail
 
 api_router = APIRouter()
 
@@ -20,3 +21,6 @@ api_router.include_router(calc.router, tags=["calc"])
 api_router.include_router(docs.router, tags=["docs"])
 api_router.include_router(departments.router, tags=["departments"])
 api_router.include_router(statistics.router, tags=["statistics"])
+api_router.include_router(oauth.router, prefix="/oauth", tags=["oauth"])
+api_router.include_router(gmail.router, prefix="/gmail", tags=["gmail"])
+api_router.include_router(yandex_mail.router, prefix="/yandex-mail", tags=["yandex_mail"])

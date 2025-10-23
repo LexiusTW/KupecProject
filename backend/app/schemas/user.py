@@ -15,7 +15,7 @@ class Role(str, Enum):
 class UserCreate(BaseModel):
     login: str
     password: constr(min_length=8) #type: ignore
-    email: str
+    email: Optional[str] = None
     employee_name: str
     phone_number: Optional[str] = None
     
@@ -27,7 +27,7 @@ class UserCreate(BaseModel):
 class UserCreateByAdmin(BaseModel):
     login: str
     password: constr(min_length=8) #type: ignore
-    email: str
+    email: Optional[str] = None
     employee_name: str
     phone_number: Optional[str] = None
     role: Role
@@ -38,7 +38,7 @@ class UserCreateByAdmin(BaseModel):
 class UserBase(BaseModel):
     id: int
     login: str
-    email: str
+    email: Optional[str] = None
     role: Role
     employee_name: str
     phone_number: Optional[str] = None
