@@ -20,7 +20,7 @@ class User(Base):
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
     organization = relationship("Organization", back_populates="users")
-    department = relationship("Department", back_populates="users")
+    department = relationship("Department", back_populates="users", foreign_keys=[department_id])
 
     employee_name = Column(String, nullable=False)
     phone_number = Column(String, unique=True, nullable=True)

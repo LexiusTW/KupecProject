@@ -3,7 +3,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session as SyncSession
+from sqlalchemy.orm import Session as SyncSession, joinedload
 
 from app.api.deps import get_db, get_current_user
 from app.core import security
@@ -35,10 +35,13 @@ async def list_users(
             users_result['users'] = crud_user.get_by_organization(sdb, organization_id=current_user.organization_id)
         await db.run_sync(_sync_get_by_org)
     elif current_user.role == Role.HEAD_OF_SALES.value:
-        # РОП видит только своих подчиненных менеджеров
-        def _sync_get_by_parent(sdb: SyncSession):
-            users_result['users'] = crud_user.get_by_parent(sdb, parent_id=current_user.id)
-        await db.run_sync(_sync_get_by_parent)
+        # РОП видит только пользователей своего отдела
+        def _sync_get_by_department(sdb: SyncSession):
+            if not current_user.department_id:
+                users_result['users'] = []
+                return
+            users_result['users'] = sdb.query(User).options(joinedload(User.organization)).filter(User.department_id == current_user.department_id).all()
+        await db.run_sync(_sync_get_by_department)
 
     return users_result.get('users', [])
 
@@ -67,6 +70,7 @@ async def create_user(
         if user_in.role != Role.MANAGER:
             raise HTTPException(status_code=403, detail="РОП может создавать только Менеджеров")
         user_in.parent_id = current_user.id
+        user_in.department_id = current_user.department_id
 
     elif current_user.role == Role.DIRECTOR.value:
         if user_in.role == Role.MANAGER and user_in.parent_id:

@@ -164,8 +164,8 @@ async def refresh_access_token(
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(response: Response):
-    _delete_cookie(response, key="refresh_token")
     _delete_cookie(response, key="access_token")
+    _delete_cookie(response, key="refresh_token")
     return {"message": "ok"}
 
 
